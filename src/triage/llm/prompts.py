@@ -29,8 +29,8 @@ from triage.llm.exceptions import PolicyError, PromptError
 logger = logging.getLogger(__name__)
 
 _PACKAGE = "triage"
-POLICIES = "policies"
-PROMPTS = "prompts"
+_POLICIES = "policies"
+_PROMPTS = "prompts"
 
 
 def _read(directory: str, name: str) -> str:
@@ -56,9 +56,9 @@ def load_policy(name: str) -> str:
     re-reading it per finding.
     """
     try:
-        text = _strip_front_matter(_read(POLICIES, name))
+        text = _strip_front_matter(_read(_POLICIES, name))
     except (FileNotFoundError, OSError) as exc:
-        raise PolicyError(f"no policy at {POLICIES}/{name}.md") from exc
+        raise PolicyError(f"no policy at {_POLICIES}/{name}.md") from exc
 
     if not text:
         logger.warning("Policy %r is empty.", name)
@@ -69,9 +69,9 @@ def load_policy(name: str) -> str:
 def load_prompt(name: str) -> str:
     """One prompt template, unfilled."""
     try:
-        return _read(PROMPTS, name).strip()
+        return _read(_PROMPTS, name).strip()
     except (FileNotFoundError, OSError) as exc:
-        raise PromptError(f"no prompt at {PROMPTS}/{name}.md") from exc
+        raise PromptError(f"no prompt at {_PROMPTS}/{name}.md") from exc
 
 
 def build_prompt(name: str, /, **values: object) -> str:
@@ -82,11 +82,11 @@ def build_prompt(name: str, /, **values: object) -> str:
     """
     template = load_prompt(name)
     if not template:
-        raise PromptError(f"prompt {name!r} is empty; write {PROMPTS}/{name}.md")
+        raise PromptError(f"prompt {name!r} is empty; write {_PROMPTS}/{name}.md")
     try:
         return template.format(**values)
     except KeyError as exc:
         raise PromptError(f"prompt {name!r} needs a value for {exc}") from exc
 
 
-__all__ = ["POLICIES", "PROMPTS", "build_prompt", "load_policy", "load_prompt"]
+__all__ = ["build_prompt", "load_policy", "load_prompt"]

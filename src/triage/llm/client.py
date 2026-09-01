@@ -95,7 +95,7 @@ class TriageClient:
         already composed. ``user_input`` is the finding under assessment.
 
         ``cache_key`` is worth passing whenever a batch shares its instructions:
-        the policy bundle is byte-identical across every finding in a run, and a
+        the policy text is byte-identical across every finding in a run, and a
         stable key lets the provider cache it instead of re-reading it each time.
 
         Raises :class:`OutputValidationError` once the attempts are spent, and
