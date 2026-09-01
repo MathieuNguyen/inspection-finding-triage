@@ -19,15 +19,13 @@ the working copy. Where the two differ, these files are what the system actually
 ## Editing
 
 Edit the markdown. There is no code change, no schema to update and no release step — the text is
-read at import and composed into the prompt that needs it. `src/triage/llm/prompts.py` declares which
-policies each prompt pulls in.
+read at import and composed into the prompt that needs it, by `src/triage/llm/prompts.py`.
 
 An empty file logs a warning and contributes an empty section rather than failing, so the scaffold
 holds while these are being written. Nothing else validates the *content*: what a policy says is an
 engineering judgement, and the code deliberately has no opinion on it.
 
-## Traceability
+## Front matter
 
-`policy_fingerprint()` is a short digest of the exact text behind a run. Log it with the output and a
-ticket can be traced to the wording that produced it — the difference between "the scoring changed"
-and "the policy changed", which is otherwise unanswerable after the fact.
+Each file opens with a `---` block recording version, author and date. That is the record of how the
+guidance has changed; it is stripped before the text reaches the model.

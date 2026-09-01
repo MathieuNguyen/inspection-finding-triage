@@ -51,10 +51,9 @@ src/triage/
     settings.py    # LlmSettings, Effort — model, reasoning budgets, limits, all from the env
     exceptions.py  # what the layer raises; a batch reports every failure together
     client.py      # TriageClient.structured, map_bounded — the only network calls
-    policies.py    # load the policy markdown, bundle it, fingerprint it
-    prompts.py     # templates, and the checks that keep a spec honest about its markdown
+    prompts.py     # load the policy and prompt markdown, assemble one into the other
   policies/        # likelihood, impact, urgency, errors — the only rules the model sees
-  prompts/         # prompt templates, $-placeholders
+  prompts/         # summary, scoring_likelihood/impact/urgency, actions
 tests/
   models/          # mirrors src/triage/models/
   llm/             # mirrors src/triage/llm/

@@ -37,7 +37,7 @@ src/triage/
   registry.py    # load + validate the CSVs, join findings to equipment, index the batch
   llm/           # settings, exceptions, the structured call, prompt + policy loading
   policies/      # the triage guidance as markdown — the only rules the model sees
-  prompts/       # prompt templates, $-placeholders
+  prompts/       # prompt templates, {placeholder} slots
   extraction.py  # structured extraction from finding_description        — not built
   triage.py      # scoring pass, cross-finding checks, review-flag logic — not built
   cli.py         # entry point: CSVs in, tickets out                     — not built
@@ -60,8 +60,9 @@ SDK's `max_retries`, while `max_output_attempts` re-asks when a response fails *
 a score outside 1–10 is well-formed JSON that `ScoreBlock` rejects. Reasoning effort is chosen by
 kind of work, `Effort.WRITING` or `Effort.JUDGING`, never by naming a level at a call site.
 
-A prompt declares the variables it takes in `PromptSpec`; the markdown must use exactly those and
-no others, checked in both directions. `$policies` is reserved and filled from the spec.
+`prompts.py` is the whole of the prompt layer: load a policy, load a template, `.format` one into
+the other. Braces in prompt text must be doubled. Policy front matter is stripped before the text
+reaches the model.
 
 ## Read-only inputs — schema only, never content
 
@@ -88,9 +89,8 @@ written in Python.
 at run time**. One authoritative copy per dimension is the whole point: where the two differ, the
 policy files are what the system does. Never retype either into source.
 
-Editing a policy is a markdown edit — no code change, no schema change. `policy_fingerprint()`
-records which wording produced a run, so a scoring change stays distinguishable from a policy
-edit after the fact.
+Editing a policy is a markdown edit — no code change, no schema change. Each file carries `---`
+front matter recording version, author and date; that is where a change of guidance is recorded.
 
 Non-negotiable, and the policy text must carry all four:
 
