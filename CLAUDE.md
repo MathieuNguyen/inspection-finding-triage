@@ -9,9 +9,14 @@ summary, a recommended action, and a human-review flag.
 - **Python 3.13** — pinned via `.python-version`, matching the system interpreter (3.13.6).
 - **uv** for everything: `uv sync`, `uv run <cmd>`, `uv add <pkg>`. Deps live in `pyproject.toml`,
   locked in `uv.lock`. No `pip install`, no `requirements.txt`.
-- **Pydantic v2** (latest) and **openai** (latest) — currently 2.12.x and 2.21.x. Do not write v1
+- **Pydantic v2** (latest) and **openai** (latest) — currently 2.13.x and 3.6.x. Do not write v1
   Pydantic (`@validator`, `.dict()`, `class Config`) or legacy OpenAI calls.
+- **pydantic-settings** holds run configuration. Everything tunable is a field on `LlmSettings`,
+  read from the environment with a `TRIAGE_` prefix; `.env.example` documents the full set.
 - `OPENAI_API_KEY` comes from the environment / a gitignored `.env`. Never hard-code or print it.
+  It is a `SecretStr`, so it stays out of reprs and log lines.
+- The LLM layer is **async throughout** — `AsyncOpenAI`, and a batch runs under a concurrency
+  ceiling rather than one finding at a time.
 
 ### OpenAI usage
 
@@ -30,11 +35,15 @@ summary, a recommended action, and a human-review flag.
 src/triage/
   models/        # Pydantic models: Finding, Equipment, Ticket + score/rationale blocks
   registry.py    # load + validate the CSVs, join findings to equipment, index the batch
+  llm/           # settings, exceptions, the structured call, prompt + policy loading
+  policies/      # the triage guidance as markdown — the only rules the model sees
+  prompts/       # prompt templates, $-placeholders
   extraction.py  # structured extraction from finding_description        — not built
   triage.py      # scoring pass, cross-finding checks, review-flag logic — not built
   cli.py         # entry point: CSVs in, tickets out                     — not built
 tests/
   models/        # mirrors src/triage/models/
+  llm/           # mirrors src/triage/llm/
 ```
 
 `registry.py` reports facts, never interpretations. `EnrichedFinding.partners_with_findings` names
@@ -43,6 +52,16 @@ with no registry row. What either means for a score is `triage.py`'s call. A mal
 one `CsvValidationError` listing every bad line rather than failing on the first. Where
 `Finding.equipment_type` disagrees with the registry the registry wins and the mismatch is logged,
 not fatal.
+
+`llm/` is the only code that makes a network call. `TriageClient.structured` is the single entry
+point; `map_bounded` runs it across a batch and raises one `BatchError` naming every failure, the
+same contract as `CsvValidationError`. Two retry budgets, kept apart: transport failures are the
+SDK's `max_retries`, while `max_output_attempts` re-asks when a response fails *our* validation —
+a score outside 1–10 is well-formed JSON that `ScoreBlock` rejects. Reasoning effort is chosen by
+kind of work, `Effort.WRITING` or `Effort.JUDGING`, never by naming a level at a call site.
+
+A prompt declares the variables it takes in `PromptSpec`; the markdown must use exactly those and
+no others, checked in both directions. `$policies` is reserved and filled from the spec.
 
 ## Read-only inputs — schema only, never content
 
@@ -60,12 +79,20 @@ Anything that would make the system score these 21 findings well but a 22nd find
 
 ## Domain knowledge
 
-`reference/domain_knowledge.md` is the only written record of how triage is done, and it must be
-meaningfully encoded — not paraphrased away. Load it from the file; don't retype it into source.
-**How** it is encoded (model context vs. deterministic Python) is still an open design decision —
-raise it before implementing the scoring pass.
+**Decided:** the notes are encoded as **markdown policy files in model context**, one per
+dimension, in `src/triage/policies/` — `likelihood.md`, `impact.md`, `urgency.md`, `errors.md`.
+Those four files are the only triage guidance that reaches the model, and no scoring rule is
+written in Python.
 
-Non-negotiable regardless of mechanism:
+`reference/domain_knowledge.md` is the read-only source they were derived from and is **not read
+at run time**. One authoritative copy per dimension is the whole point: where the two differ, the
+policy files are what the system does. Never retype either into source.
+
+Editing a policy is a markdown edit — no code change, no schema change. `policy_fingerprint()`
+records which wording produced a run, so a scoring change stays distinguishable from a policy
+edit after the fact.
+
+Non-negotiable, and the policy text must carry all four:
 
 - `reliability_score` is inverted relative to likelihood (10 = highly reliable). Getting this
   backwards is the single most common failure.
@@ -83,3 +110,12 @@ Non-negotiable regardless of mechanism:
 just the field it exercises. `tests/test_schema_conformance.py` is the one place that reads `data/`
 and `reference/`, and it asserts structure only — rows validate, the join is total, the example
 ticket round-trips. Never assert on a score, an equipment ID, or a row count.
+
+The suite is offline and needs no API key: `tests/llm/conftest.py` supplies hand-written stubs
+(`stub_client`, `response`, `invalid_output`) and a `settings` factory that never reads the
+environment or a `.env`. No mocking library — a stub records what was sent, because the outgoing
+request is part of the contract. Async tests need no marker; `asyncio_mode = "auto"`.
+
+Nothing asserts on what a policy *says*. That text is going to be rewritten as the judgement
+behind it changes, and a test pinning its wording would be friction the file-based arrangement
+exists to remove.

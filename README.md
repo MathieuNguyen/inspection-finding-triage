@@ -6,9 +6,12 @@ summary, a recommended action, and a human-review flag.
 
 ## Status
 
-Work in progress. The Pydantic model layer and the registry layer — CSV loading, the findings-to-
-equipment join and the batch redundancy index — are in place. The extraction pass over the finding
-text, the scoring pass and the CLI are not yet built, so there is no end-to-end run command yet.
+Work in progress. In place: the Pydantic model layer, the registry layer (CSV loading, the
+findings-to-equipment join, the batch redundancy index), and the LLM layer — the async structured
+call, run configuration, and the loaders that assemble prompts from the policy files.
+
+The policy and prompt markdown ships **empty and is being written**. The extraction pass, the
+scoring pass and the CLI are not built, so there is no end-to-end run command yet.
 
 ## Setup
 
@@ -18,6 +21,15 @@ creates and syncs `.venv` from `uv.lock` on demand.
 ```bash
 uv sync
 ```
+
+Then copy the environment template and add a key:
+
+```bash
+cp .env.example .env
+```
+
+`.env` is gitignored. `.env.example` documents every setting: the model, the two reasoning
+budgets, the concurrency ceiling and the two retry budgets.
 
 ## Tests
 
@@ -35,10 +47,25 @@ src/triage/
     redundancy.py  # Redundancy — structure parsed from a free-text registry column
     outputs.py     # ScoreBlock, Ticket, TicketDocument — the shape of tickets.json
   registry.py      # load + validate the CSVs, join findings to equipment, index the batch
+  llm/
+    settings.py    # LlmSettings, Effort — model, reasoning budgets, limits, all from the env
+    exceptions.py  # what the layer raises; a batch reports every failure together
+    client.py      # TriageClient.structured, map_bounded — the only network calls
+    policies.py    # load the policy markdown, bundle it, fingerprint it
+    prompts.py     # templates, and the checks that keep a spec honest about its markdown
+  policies/        # likelihood, impact, urgency, errors — the only rules the model sees
+  prompts/         # prompt templates, $-placeholders
 tests/
   models/          # mirrors src/triage/models/
+  llm/             # mirrors src/triage/llm/
 data/              # read-only inputs
 reference/         # read-only: domain knowledge notes, example ticket
 ```
 
 `OPENAI_API_KEY` is read from the environment or a gitignored `.env`.
+
+## Triage rules
+
+How findings are scored lives in `src/triage/policies/` as markdown — one file per dimension, no
+scoring rule in Python. Changing a judgement is a text edit by whoever owns it, with no code
+change and no release. See `src/triage/policies/README.md`.
