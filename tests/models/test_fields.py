@@ -12,9 +12,11 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from triage.models import (
+    INSPECTION_TYPES,
     SCORE_RANGE,
     TICKET_TEXT_LIMIT,
     FindingId,
+    InspectionType,
     NonEmptyStr,
     RegistryScore,
     TicketId,
@@ -89,3 +91,34 @@ def test_yes_no_rejects_anything_else(value: str) -> None:
     """A registry cell that is neither Yes nor No is a data problem, not a False."""
     with pytest.raises(ValidationError):
         _validate(YesNo, value)
+
+
+@pytest.mark.parametrize("value", INSPECTION_TYPES)
+def test_every_specified_inspection_type_is_accepted(value: str) -> None:
+    assert _validate(InspectionType, value) == value
+
+
+def test_inspection_type_is_a_closed_set() -> None:
+    """The seven specified programmes, no more."""
+    assert len(INSPECTION_TYPES) == 7
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["Thermographic Survey", "routine operator round", "Function test", ""],
+)
+def test_inspection_type_rejects_anything_else(value: str) -> None:
+    """Including near misses: a casing variant is a data problem, not a match."""
+    with pytest.raises(ValidationError):
+        _validate(InspectionType, value)
+
+
+def test_inspection_type_tolerates_surrounding_whitespace() -> None:
+    assert _validate(InspectionType, "  Function Test  ") == "Function Test"
+
+
+def test_inspection_type_error_names_the_permitted_values() -> None:
+    with pytest.raises(ValidationError) as caught:
+        _validate(InspectionType, "Thermographic Survey")
+    message = str(caught.value)
+    assert all(permitted in message for permitted in INSPECTION_TYPES)

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from triage.models.fields import (
     FindingId,
+    InspectionType,
     NonEmptyStr,
     RegistryScore,
     TrimmedStr,
@@ -25,9 +26,13 @@ class Finding(BaseModel):
     """One row of ``data/inspection_findings.csv``.
 
     ``extra="ignore"`` so a new column added to the CSV does not break loading.
-    The categorical columns stay plain strings rather than enums: an unseen
-    ``inspection_type`` or ``inspection_method`` on a future finding should reach
-    the model as text, not abort the run.
+
+    ``inspection_type`` is a closed vocabulary and is validated against it: the
+    seven inspection programmes are specified, so a value outside them is a data
+    error worth catching at load time rather than a new category. The remaining
+    categoricals — ``inspection_method`` and ``reporter_role`` — are open
+    strings, because neither is specified as a fixed set and an unfamiliar value
+    there should reach the model as text.
     """
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -38,7 +43,9 @@ class Finding(BaseModel):
     equipment_type: NonEmptyStr = Field(
         description="Denormalised from the registry; the registry row is authoritative."
     )
-    inspection_type: NonEmptyStr
+    inspection_type: InspectionType = Field(
+        description="The inspection programme this finding came out of."
+    )
     inspection_method: NonEmptyStr = Field(description="How the finding was detected.")
     finding_description: NonEmptyStr = Field(
         description="Free text written by the reporter. The primary signal."

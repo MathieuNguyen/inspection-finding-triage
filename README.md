@@ -29,7 +29,7 @@ uv run pytest
 ```
 src/triage/
   models/
-    fields.py      # shared annotated primitives (ID patterns, score range, text limits)
+    fields.py      # shared primitives: ID patterns, score range, text limits, closed vocabularies
     inputs.py      # Finding, Equipment — one model per CSV row
     redundancy.py  # Redundancy — structure parsed from a free-text registry column
     outputs.py     # ScoreBlock, Ticket, TicketDocument — the shape of tickets.json

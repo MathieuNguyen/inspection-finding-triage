@@ -10,13 +10,22 @@ import csv
 import json
 from pathlib import Path
 
-from triage.models import Equipment, Finding, RedundancyKind, Ticket
+from triage.models import INSPECTION_TYPES, Equipment, Finding, RedundancyKind, Ticket
 
 
 def test_every_findings_row_validates(repo_root: Path) -> None:
     with (repo_root / "data" / "inspection_findings.csv").open(newline="") as handle:
         rows = [Finding(**row) for row in csv.DictReader(handle)]
     assert rows
+
+
+def test_supplied_findings_stay_inside_the_inspection_type_vocabulary(
+    repo_root: Path,
+) -> None:
+    """Guards the closed vocabulary against a drifting input file."""
+    with (repo_root / "data" / "inspection_findings.csv").open(newline="") as handle:
+        used = {row["inspection_type"] for row in csv.DictReader(handle)}
+    assert used <= set(INSPECTION_TYPES)
 
 
 def test_every_registry_row_validates(repo_root: Path) -> None:

@@ -30,9 +30,11 @@ plain ``ge``/``le``.
 """
 
 from triage.models.fields import (
+    INSPECTION_TYPES,
     SCORE_RANGE,
     TICKET_TEXT_LIMIT,
     FindingId,
+    InspectionType,
     NonEmptyStr,
     RegistryScore,
     TicketId,
@@ -45,11 +47,13 @@ from triage.models.outputs import ScoreBlock, Ticket, TicketDocument
 from triage.models.redundancy import Redundancy, RedundancyField, RedundancyKind
 
 __all__ = [
+    "INSPECTION_TYPES",
     "SCORE_RANGE",
     "TICKET_TEXT_LIMIT",
     "Equipment",
     "Finding",
     "FindingId",
+    "InspectionType",
     "NonEmptyStr",
     "Redundancy",
     "RedundancyField",

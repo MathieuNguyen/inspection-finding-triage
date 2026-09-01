@@ -7,7 +7,7 @@ the 300-character ticket limit is stated once.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, get_args
 
 from pydantic import BeforeValidator, Field, StringConstraints
 
@@ -44,6 +44,33 @@ FindingId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^F
 TicketId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^TKT-\d{4}$")]
 """``TKT-####``, as issued by this system."""
 
+def _strip(value: Any) -> Any:
+    """Trim a string before it is matched against a closed vocabulary."""
+    return value.strip() if isinstance(value, str) else value
+
+
+_InspectionTypeValues = Literal[
+    "Routine Operator Round",
+    "Function Test",
+    "Corrosion Survey",
+    "Statutory Inspection",
+    "Condition Monitoring",
+    "Structural Survey",
+    "Shutdown Inspection",
+]
+
+INSPECTION_TYPES: tuple[str, ...] = get_args(_InspectionTypeValues)
+"""The permitted ``inspection_type`` values, in specification order."""
+
+InspectionType = Annotated[_InspectionTypeValues, BeforeValidator(_strip)]
+"""A closed vocabulary: the inspection programme a finding came out of.
+
+The seven values are specified, so anything else is a data error rather than a
+new category, and failing at load time names the permitted values in the error.
+Contrast ``inspection_method`` and ``reporter_role``, which are open strings.
+"""
+
+
 _TRUTHY = frozenset({"yes", "y", "true", "1"})
 _FALSY = frozenset({"no", "n", "false", "0"})
 
@@ -65,7 +92,9 @@ YesNo = Annotated[bool, BeforeValidator(_parse_yes_no)]
 
 
 __all__ = [
+    "INSPECTION_TYPES",
     "FindingId",
+    "InspectionType",
     "NonEmptyStr",
     "RegistryScore",
     "SCORE_RANGE",

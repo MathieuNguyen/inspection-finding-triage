@@ -8,7 +8,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from triage.models import Equipment, Finding, RedundancyKind
+from triage.models import INSPECTION_TYPES, Equipment, Finding, RedundancyKind
 
 CsvRow = dict[str, str]
 
@@ -29,10 +29,33 @@ def test_unknown_csv_column_is_ignored(finding_row: Callable[..., CsvRow]) -> No
     assert not hasattr(finding, "work_order_ref")
 
 
-def test_unseen_categorical_value_is_accepted(finding_row: Callable[..., CsvRow]) -> None:
-    """Categoricals are open sets: a 22nd finding may use a new method."""
-    finding = Finding(**finding_row(inspection_method="Acoustic Emission"))
+def test_open_categoricals_accept_unseen_values(
+    finding_row: Callable[..., CsvRow],
+) -> None:
+    """inspection_method and reporter_role are not specified as fixed sets."""
+    finding = Finding(
+        **finding_row(
+            inspection_method="Acoustic Emission",
+            reporter_role="Subsea Inspection Engineer",
+        )
+    )
     assert finding.inspection_method == "Acoustic Emission"
+    assert finding.reporter_role == "Subsea Inspection Engineer"
+
+
+@pytest.mark.parametrize("value", INSPECTION_TYPES)
+def test_every_specified_inspection_type_loads(
+    value: str, finding_row: Callable[..., CsvRow]
+) -> None:
+    assert Finding(**finding_row(inspection_type=value)).inspection_type == value
+
+
+def test_unknown_inspection_type_is_rejected(
+    finding_row: Callable[..., CsvRow],
+) -> None:
+    """A closed vocabulary: an unlisted programme fails the load."""
+    with pytest.raises(ValidationError):
+        Finding(**finding_row(inspection_type="Thermographic Survey"))
 
 
 def test_equipment_yes_no_becomes_bool(equipment_row: Callable[..., CsvRow]) -> None:
