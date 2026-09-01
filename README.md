@@ -6,8 +6,9 @@ summary, a recommended action, and a human-review flag.
 
 ## Status
 
-Work in progress. The Pydantic model layer is in place; the registry join, extraction, scoring pass
-and CLI are not yet built, so there is no end-to-end run command yet.
+Work in progress. The Pydantic model layer and the registry layer — CSV loading, the findings-to-
+equipment join and the batch redundancy index — are in place. The extraction pass over the finding
+text, the scoring pass and the CLI are not yet built, so there is no end-to-end run command yet.
 
 ## Setup
 
@@ -33,6 +34,7 @@ src/triage/
     inputs.py      # Finding, Equipment — one model per CSV row
     redundancy.py  # Redundancy — structure parsed from a free-text registry column
     outputs.py     # ScoreBlock, Ticket, TicketDocument — the shape of tickets.json
+  registry.py      # load + validate the CSVs, join findings to equipment, index the batch
 tests/
   models/          # mirrors src/triage/models/
 data/              # read-only inputs
