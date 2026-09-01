@@ -1,0 +1,21 @@
+{
+  "ticket_id": "TKT-1005",
+  "finding_id": "F-1005",
+  "equipment_id": "FG-0455",
+  "summary": "Gas detector FG-0455 failed to respond to test gas on two separate cylinders and is functionally dead, leaving the compression module 2oo3 detection group running on two heads with no remaining margin.",
+  "likelihood_of_failure": {
+    "score": 10,
+    "rationale": "Not a prediction. The head has already failed its functional test twice with independent test gas while the other two heads responded normally, so the failure is confirmed rather than probable."
+  },
+  "impact_of_failure": {
+    "score": 7,
+    "rationale": "An SCE protecting a module with high hydrocarbon inventory and ignition sources, but the 2oo3 voting arrangement means gas detection is degraded rather than defeated. A second head loss would defeat it."
+  },
+  "urgency": {
+    "score": 9,
+    "rationale": "High likelihood and high impact already place this near the top, and the protection-layer rule escalates it regardless: a failed SCE detector is an impairment from the moment it is known."
+  },
+  "recommended_action": "Raise an impairment entry for the compression module gas detection group, replace the FG-0455 head, and confirm the remaining two heads respond to test gas before standing the impairment down.",
+  "review_required": true,
+  "review_reason": "Any ticket touching a Safety Critical Element is routed to a human before it enters the work queue."
+}
