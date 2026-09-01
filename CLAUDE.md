@@ -23,9 +23,11 @@ summary, a recommended action, and a human-review flag.
 - Use the **Responses API** with structured outputs: `client.responses.parse(model=..., input=[...],
   text_format=MyModel)` and read `response.output_parsed`. `chat.completions` and
   `beta.chat.completions.parse` are legacy — don't reach for them.
-- Structured-output schemas are a strict JSON Schema subset. **Numeric bounds are not enforced**:
-  `Field(ge=1, le=10)` will not constrain the model. Express ranges in the field description and
-  validate them with a Pydantic `@field_validator` after parsing.
+- Structured-output schemas are a strict JSON Schema subset and **bounds are not enforced** —
+  neither `Field(ge=1, le=10)` nor a `max_length` string constraint constrains the model. State the
+  bound in the field description, which the model reads, and enforce it in a `@field_validator`
+  after parsing, so an overrun is something `max_output_attempts` can re-ask on. `ScoreBlock.score`
+  and `TicketTextBlock.text` are both built this way.
 - Every field must be required. Use explicit `X | None` unions rather than optional fields, and put
   the scoring guidance in `Field(description=...)` — the model reads it.
 
@@ -33,11 +35,11 @@ summary, a recommended action, and a human-review flag.
 
 ```
 src/triage/
-  models/        # Pydantic models: Finding, Equipment, Ticket + score/rationale blocks
+  models/        # Pydantic models: Finding, Equipment, Ticket + the blocks each pass authors
   registry.py    # load + validate the CSVs, join findings to equipment, index the batch
   llm/           # settings, exceptions, the structured call, prompt + policy loading
-  policies/      # the triage guidance as markdown — the only rules the model sees
-  prompts/       # prompt templates, {placeholder} slots
+  policies/      # the triage guidance as markdown — no scoring rule is written in Python
+  prompts/       # prompt templates, one {placeholder} per policy they compose in
   extraction.py  # structured extraction from finding_description        — not built
   triage.py      # scoring pass, cross-finding checks, review-flag logic — not built
   cli.py         # entry point: CSVs in, tickets out                     — not built
@@ -61,8 +63,16 @@ a score outside 1–10 is well-formed JSON that `ScoreBlock` rejects. Reasoning 
 kind of work, `Effort.WRITING` or `Effort.JUDGING`, never by naming a level at a call site.
 
 `prompts.py` is the whole of the prompt layer: load a policy, load a template, `.format` one into
-the other. Braces in prompt text must be doubled. Policy front matter is stripped before the text
-reaches the model.
+the other. Braces in prompt text must be doubled. Front matter is stripped from both directories
+before the text reaches the model.
+
+A template's only placeholders are policy slots. A finding's own data goes to the model as
+`user_input`, so a prompt *names* the fields it will be handed rather than interpolating them —
+that keeps `instructions` byte-identical across a batch, which is what `prompt_cache_key` needs to
+be worth passing. Prompts frame, policies judge: a prompt states the task, names its inputs and
+states the output contract, and never restates a rule a policy already carries.
+`src/triage/prompts/README.md` holds the per-file placeholder table. `scoring_urgency.md` is the
+one template still unwritten.
 
 ## Read-only inputs — schema only, never content
 
@@ -92,7 +102,9 @@ policy files are what the system does. Never retype either into source.
 Editing a policy is a markdown edit — no code change, no schema change. Each file carries `---`
 front matter recording version, author and date; that is where a change of guidance is recorded.
 
-Non-negotiable, and the policy text must carry all four:
+Non-negotiable, and all four must reach the model. The policy text carries the first three; the
+fourth is an output requirement rather than a scoring rule, so `scoring_likelihood.md` and
+`scoring_impact.md` state it and no policy file does:
 
 - `reliability_score` is inverted relative to likelihood (10 = highly reliable). Getting this
   backwards is the single most common failure.
