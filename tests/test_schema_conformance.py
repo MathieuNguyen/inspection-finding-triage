@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from triage.models import INSPECTION_TYPES, Equipment, Finding, RedundancyKind, Ticket
+from triage.registry import join, load_findings, load_registry
 
 
 def test_every_findings_row_validates(repo_root: Path) -> None:
@@ -39,3 +40,11 @@ def test_example_ticket_validates_against_the_model(repo_root: Path) -> None:
     """The example defines the output structure; only its shape is asserted."""
     payload = json.loads((repo_root / "reference" / "example_ticket.json").read_text())
     assert Ticket.model_validate(payload).model_dump(mode="json") == payload
+
+
+def test_the_supplied_files_load_and_join(repo_root: Path) -> None:
+    """Structure only: every finding resolves to a registry row."""
+    findings = load_findings(repo_root / "data" / "inspection_findings.csv")
+    registry = load_registry(repo_root / "data" / "equipment_registry.csv")
+    enriched = join(findings, registry)
+    assert len(enriched) == len(findings)

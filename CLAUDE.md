@@ -28,13 +28,21 @@ summary, a recommended action, and a human-review flag.
 
 ```
 src/triage/
-  models.py      # Pydantic models: Finding, Equipment, Ticket + score/rationale blocks
-  registry.py    # load + index the CSVs, join findings to equipment
-  extraction.py  # structured extraction from finding_description
-  triage.py      # scoring pass, cross-finding checks, review-flag logic
-  cli.py         # entry point: CSVs in, tickets out
+  models/        # Pydantic models: Finding, Equipment, Ticket + score/rationale blocks
+  registry.py    # load + validate the CSVs, join findings to equipment, index the batch
+  extraction.py  # structured extraction from finding_description        — not built
+  triage.py      # scoring pass, cross-finding checks, review-flag logic — not built
+  cli.py         # entry point: CSVs in, tickets out                     — not built
 tests/
+  models/        # mirrors src/triage/models/
 ```
+
+`registry.py` reports facts, never interpretations. `EnrichedFinding.partners_with_findings` names
+the redundancy partners that also carry a finding in this batch; `unresolved_partners` names tags
+with no registry row. What either means for a score is `triage.py`'s call. A malformed CSV raises
+one `CsvValidationError` listing every bad line rather than failing on the first. Where
+`Finding.equipment_type` disagrees with the registry the registry wins and the mismatch is logged,
+not fatal.
 
 ## Read-only inputs — schema only, never content
 
@@ -67,3 +75,11 @@ Non-negotiable regardless of mechanism:
   batch means the pair is not redundant, so findings cannot be scored purely in isolation.
 - Uncertainty is stated in the rationale, never resolved by picking a mid-range score. Uniform
   mid-range output across findings is a failure mode, not a safe default.
+
+## Tests
+
+`uv run pytest`. Unit tests use synthetic rows only: the factory fixtures in `tests/conftest.py`
+(`finding_row`, `equipment_row`, `csv_file`) return callables taking `**overrides`, so a test states
+just the field it exercises. `tests/test_schema_conformance.py` is the one place that reads `data/`
+and `reference/`, and it asserts structure only — rows validate, the join is total, the example
+ticket round-trips. Never assert on a score, an equipment ID, or a row count.
