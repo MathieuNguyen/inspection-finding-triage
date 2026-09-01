@@ -5,17 +5,19 @@ Two directories of markdown, one function that puts them together:
 * ``src/triage/policies`` — the triage guidance, one file per dimension. This is
   the maintained record of how findings are judged; editing it needs no code
   change.
-* ``src/triage/prompts`` — the prompt templates, with ``{placeholder}`` slots for
-  a policy and for the finding's own data.
+* ``src/triage/prompts`` — the prompt templates, with a ``{placeholder}`` slot
+  per policy they compose in. The finding's own data does not go here: it
+  reaches the model as ``user_input``, which keeps the instructions identical
+  across a batch and therefore cacheable.
 
 :func:`build_prompt` fills a template with whatever the caller passes it.
 
 Placeholders are filled with :meth:`str.format`, so a literal brace in prompt
 text must be doubled — ``{{`` and ``}}``.
 
-Policy files carry ``---`` front matter recording version, author and date. That
-is for whoever maintains the file, so it is stripped before the text reaches the
-model.
+Files in both directories carry ``---`` front matter recording version, author
+and date. That is for whoever maintains the file, so it is stripped before the
+text reaches the model.
 """
 
 from __future__ import annotations
@@ -67,9 +69,9 @@ def load_policy(name: str) -> str:
 
 @cache
 def load_prompt(name: str) -> str:
-    """One prompt template, unfilled."""
+    """One prompt template, unfilled and with its front matter removed."""
     try:
-        return _read(_PROMPTS, name).strip()
+        return _strip_front_matter(_read(_PROMPTS, name))
     except (FileNotFoundError, OSError) as exc:
         raise PromptError(f"no prompt at {_PROMPTS}/{name}.md") from exc
 

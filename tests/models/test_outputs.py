@@ -9,7 +9,14 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from triage.models import SCORE_RANGE, TICKET_TEXT_LIMIT, ScoreBlock, Ticket, TicketDocument
+from triage.models import (
+    SCORE_RANGE,
+    TICKET_TEXT_LIMIT,
+    ScoreBlock,
+    Ticket,
+    TicketDocument,
+    TicketTextBlock,
+)
 
 
 @pytest.mark.parametrize("value", [SCORE_RANGE[0] - 1, SCORE_RANGE[1] + 1, -1])
@@ -21,6 +28,21 @@ def test_score_outside_range_rejected(value: int) -> None:
 def test_score_rationale_must_say_something() -> None:
     with pytest.raises(ValidationError):
         ScoreBlock(score=5, rationale="   ")
+
+
+def test_text_block_takes_the_whole_budget() -> None:
+    assert len(TicketTextBlock(text="x" * TICKET_TEXT_LIMIT).text) == TICKET_TEXT_LIMIT
+
+
+def test_text_block_rejects_one_character_over() -> None:
+    """The cap is a validator, not a schema keyword, so it has to be exercised."""
+    with pytest.raises(ValidationError):
+        TicketTextBlock(text="x" * (TICKET_TEXT_LIMIT + 1))
+
+
+def test_text_block_must_say_something() -> None:
+    with pytest.raises(ValidationError):
+        TicketTextBlock(text="   ")
 
 
 def test_summary_and_action_capped(ticket: Callable[..., Ticket]) -> None:

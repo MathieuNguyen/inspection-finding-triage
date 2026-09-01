@@ -34,13 +34,20 @@ def test_every_policy_loads(name: str) -> None:
 
 @pytest.mark.parametrize("name", PROMPTS)
 def test_every_prompt_file_exists(name: str) -> None:
-    """The prompts ship empty; loading one must still work."""
+    """One prompt is still unwritten; loading an empty file must still work."""
     assert isinstance(load_prompt(name), str)
 
 
-def test_front_matter_does_not_reach_the_model() -> None:
+@pytest.mark.parametrize(
+    ("load", "name"),
+    [(load_policy, "likelihood"), (load_prompt, "summary")],
+    ids=["policy", "prompt"],
+)
+def test_front_matter_does_not_reach_the_model(
+    load: Callable[[str], str], name: str
+) -> None:
     """Version, author and date are for whoever maintains the file."""
-    text = load_policy("likelihood")
+    text = load(name)
     assert not text.startswith("---")
     assert "author:" not in text
 
@@ -55,8 +62,11 @@ def test_a_missing_prompt_says_where_it_looked() -> None:
         load_prompt("nowhere")
 
 
-def test_an_empty_prompt_refuses_to_build() -> None:
+def test_an_empty_prompt_refuses_to_build(
+    written_prompt: Callable[[str], None]
+) -> None:
     """Sending a blank instruction to the model is never what was meant."""
+    written_prompt("")
     with pytest.raises(PromptError, match="empty"):
         build_prompt("summary")
 

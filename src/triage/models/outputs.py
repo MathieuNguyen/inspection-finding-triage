@@ -58,6 +58,37 @@ class ScoreBlock(BaseModel):
         return value
 
 
+class TicketTextBlock(BaseModel):
+    """One piece of ticket prose: a summary, or a recommended action.
+
+    Separate from :class:`Ticket` because the two are written by two passes with
+    two prompts, and neither pass has the rest of the ticket to hand yet.
+
+    The cap is enforced in a validator for the same reason :class:`ScoreBlock`'s
+    range is: a strict structured-output schema drops the constraint, so an
+    overrun has to fail here, where the caller can re-ask on it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: NonEmptyStr = Field(
+        description=(
+            f"At most {TICKET_TEXT_LIMIT} characters, counting spaces. "
+            "Longer answers are rejected."
+        )
+    )
+
+    @field_validator("text")
+    @classmethod
+    def _within_limit(cls, value: str) -> str:
+        if len(value) > TICKET_TEXT_LIMIT:
+            raise ValueError(
+                f"text must be at most {TICKET_TEXT_LIMIT} characters, "
+                f"got {len(value)}"
+            )
+        return value
+
+
 class Ticket(BaseModel):
     """One triage ticket. Field order matches ``reference/example_ticket.json``.
 
@@ -142,4 +173,4 @@ class TicketDocument(BaseModel):
         return self
 
 
-__all__ = ["ScoreBlock", "Ticket", "TicketDocument"]
+__all__ = ["ScoreBlock", "Ticket", "TicketDocument", "TicketTextBlock"]
