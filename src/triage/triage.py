@@ -36,15 +36,17 @@ from functools import cache
 
 from triage.llm import (
     Effort,
+    ItemFailure,
     TriageClient,
     build_prompt,
+    gather_bounded,
     load_policy,
-    map_bounded,
 )
 from triage.models import (
     ScoreBlock,
     Ticket,
     TicketDocument,
+    TicketFailure,
     TicketTextBlock,
     UrgencyBlock,
 )
@@ -345,6 +347,19 @@ async def triage_finding(client: TriageClient, item: EnrichedFinding) -> Ticket:
     )
 
 
+def _failure(failure: ItemFailure) -> TicketFailure:
+    """One batch failure, as the document records it.
+
+    ``str`` on an exception can be empty — a bare ``raise SomeError`` — and
+    ``detail`` may not be blank, so the type stands in for a silent one.
+    """
+    return TicketFailure(
+        finding_id=failure.key,
+        error=type(failure.error).__name__,
+        detail=str(failure.error) or type(failure.error).__name__,
+    )
+
+
 async def triage_batch(
     client: TriageClient, items: Sequence[EnrichedFinding]
 ) -> TicketDocument:
@@ -353,20 +368,28 @@ async def triage_batch(
     The ceiling counts findings rather than requests, which is what the setting
     says it means; a finding's own three-way fan-out sits inside one slot.
 
-    Tickets come back in input order. Anything that failed is reported together
-    in one :class:`~triage.llm.BatchError` naming each ``finding_id``, so a
-    broken run is diagnosed in a single pass. The
-    :class:`~triage.models.TicketDocument` is built here rather than by the
-    caller because its validators are batch-scope checks — the count, and the
-    absence of a duplicated ticket or finding id.
+    **A finding that fails does not take the batch down with it.** The other
+    findings' calls have already been made and paid for by then, and a run that
+    threw them away would be both expensive and less informative than one that
+    says which findings came through and which did not. So this gathers rather
+    than reduces: tickets come back in input order, failures come back beside
+    them, and both go into the document. What a caller does about a non-empty
+    :attr:`~triage.models.TicketDocument.failures` is the caller's business —
+    the CLI writes the file and exits non-zero.
+
+    The :class:`~triage.models.TicketDocument` is built here rather than by the
+    caller because its validators are batch-scope checks — the two counts, and
+    the absence of a duplicated ticket id or a finding id claimed twice.
     """
-    tickets = await map_bounded(
+    tickets, failures = await gather_bounded(
         items,
         lambda item: triage_finding(client, item),
         limit=client.settings.max_concurrency,
         key=lambda item: item.finding.finding_id,
     )
-    return TicketDocument(tickets=tickets)
+    return TicketDocument(
+        tickets=tickets, failures=[_failure(failure) for failure in failures]
+    )
 
 
 __all__ = [

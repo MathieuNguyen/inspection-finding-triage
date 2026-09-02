@@ -16,11 +16,13 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from triage.cli import main
+from triage.llm import RefusalError
 from triage.models import ScoreBlock, TicketDocument, TicketTextBlock, UrgencyBlock
 
 CsvRow = dict[str, str]
@@ -61,6 +63,25 @@ class ClosingStub:
     @property
     def calls(self) -> list[dict[str, Any]]:
         return self.responses.calls
+
+
+class _FailsOneFinding:
+    """A stub that fails every pass for one finding, picked out by description.
+
+    The shared ``keyed_client`` answers by cache key, so it says the same thing
+    to every finding in a batch. A partial run needs the two to differ.
+    """
+
+    def __init__(self, inner: Any, description: str) -> None:
+        self._inner = inner
+        self._description = description
+        self.responses = SimpleNamespace(parse=self._parse)
+
+    async def _parse(self, **kwargs: Any) -> Any:
+        payload = json.loads(kwargs["input"][0]["content"])
+        if payload.get("finding_description") == self._description:
+            raise RefusalError("Synthetic refusal.")
+        return await self._inner.responses.parse(**kwargs)
 
 
 def _refuse(_settings: object) -> Any:
@@ -301,7 +322,7 @@ def test_a_missing_key_points_at_the_template(
     assert ".env.example" in err
 
 
-def test_every_failed_finding_is_named(
+def test_a_failed_run_still_writes_a_document(
     inputs: Callable[..., list[str]],
     keyed_client: Client,
     response: Response,
@@ -309,6 +330,7 @@ def test_every_failed_finding_is_named(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """Nothing came through, and the file says so rather than being absent."""
     argv = inputs(
         findings=[
             {"finding_id": "F-9001", "equipment_id": "XX-0001"},
@@ -322,12 +344,52 @@ def test_every_failed_finding_is_named(
     code = main(argv, build=lambda _settings: stub)
     err = capsys.readouterr().err
 
+    document = _document(tmp_path / "tickets.json")
     assert code == 1
-    assert "2 of 2 item(s) failed" in err
+    assert document.tickets == []
+    assert sorted(f.finding_id for f in document.failures) == ["F-9001", "F-9002"]
     assert "F-9001" in err
     assert "F-9002" in err
-    assert not (tmp_path / "tickets.json").exists()
     assert stub.closed
+
+
+def test_a_partial_run_keeps_what_came_through(
+    inputs: Callable[..., list[str]],
+    keyed_client: Client,
+    response: Response,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The point of the whole arrangement: one bad finding, one good ticket, exit 1."""
+    argv = inputs(
+        findings=[
+            {
+                "finding_id": "F-9001",
+                "equipment_id": "XX-0001",
+                "finding_description": "Fine.",
+            },
+            {
+                "finding_id": "F-9002",
+                "equipment_id": "XX-0002",
+                "finding_description": "Doomed.",
+            },
+        ],
+        equipment=[{"equipment_id": "XX-0001"}, {"equipment_id": "XX-0002"}],
+    )
+    stub = ClosingStub(
+        _FailsOneFinding(keyed_client(_answers(response)), "Doomed.")
+    )
+
+    code = main(argv, build=lambda _settings: stub)
+    err = capsys.readouterr().err
+
+    document = _document(tmp_path / "tickets.json")
+    assert code == 1
+    assert [ticket.finding_id for ticket in document.tickets] == ["F-9001"]
+    assert [failure.finding_id for failure in document.failures] == ["F-9002"]
+    assert (document.tickets_generated, document.findings_failed) == (1, 1)
+    assert "1 of 2 finding(s) produced no ticket" in err
+    assert "F-9002" in err
 
 
 def test_limit_must_be_at_least_one(inputs: Callable[..., list[str]]) -> None:

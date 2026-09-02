@@ -56,9 +56,12 @@ one `CsvValidationError` listing every bad line rather than failing on the first
 not fatal.
 
 `llm/` is the only code that makes a network call. `TriageClient.structured` is the single entry
-point; `map_bounded` runs it across a batch and raises one `BatchError` naming every failure, the
-same contract as `CsvValidationError`. Two retry budgets, kept apart: transport failures are the
-SDK's `max_retries`, while `max_output_attempts` re-asks when a response fails *our* validation —
+point. `gather_bounded` runs it across a batch and hands back the results and the failures side by
+side; `map_bounded` is the thin all-or-nothing reduction over it, raising one `BatchError` naming
+every failure, the same contract as `CsvValidationError`. Which one a caller wants is whether a
+partial answer beats none — for a batch of findings whose calls are already paid for, it does.
+Two retry budgets, kept apart: transport failures are the SDK's `max_retries`, while
+`max_output_attempts` re-asks when a response fails *our* validation —
 a score outside 1–10 is well-formed JSON that `ScoreBlock` rejects. Reasoning effort is chosen by
 kind of work, `Effort.WRITING` or `Effort.JUDGING`, never by naming a level at a call site.
 
@@ -93,9 +96,14 @@ error the layers below raise already names everything that went wrong, so `main`
 returns 1 rather than rewording it or letting a traceback out; `PolicyError` and `PromptError` are
 `ValueError` rather than `LlmError` and have to be caught by name.
 
-`triage_batch` runs `map_bounded` over the enriched findings and returns a `TicketDocument`, whose
-validators are the batch-scope checks — the count, and no duplicated ticket or finding id. The
-ceiling counts **findings, not requests**: a finding's three-way fan-out sits inside one slot, so
+`triage_batch` runs `gather_bounded` over the enriched findings and returns a `TicketDocument`
+recording both outcomes: the tickets, and a `TicketFailure` per finding that produced none. A
+failure does not take the batch down — the siblings' calls have already been made, and a run that
+discarded them would cost more and say less. The document's validators are the batch-scope checks —
+the two counts, no duplicated ticket id, and no finding id claimed by both a ticket and a failure.
+The CLI writes the document whatever it holds and exits 1 when it holds failures.
+
+The ceiling counts **findings, not requests**: a finding's three-way fan-out sits inside one slot, so
 requests in flight can reach three times `max_concurrency` at that step. `ticket_id` mirrors the
 finding number (`F-1005` becomes `TKT-1005`), so rerunning a subset does not renumber tickets that
 did not change. `Ticket.urgency` is narrowed from `UrgencyBlock` to a plain `ScoreBlock`

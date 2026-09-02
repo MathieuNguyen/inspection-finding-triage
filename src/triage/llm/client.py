@@ -195,19 +195,23 @@ def _log_usage(response: Any) -> None:
     )
 
 
-async def map_bounded[I, O](
+async def gather_bounded[I, O](
     items: Sequence[I],
     call: Callable[[I], Awaitable[O]],
     *,
     limit: int,
     key: Callable[[I], str],
-) -> list[O]:
-    """Run ``call`` over every item, at most ``limit`` at a time.
+) -> tuple[list[O], list[ItemFailure]]:
+    """Run ``call`` over every item at most ``limit`` at a time, keeping both.
 
-    Results come back in input order. If anything failed, every failure is
-    reported together in one :class:`BatchError` naming the item it belongs to —
-    the same contract as a malformed CSV, so a broken run is diagnosed in one
-    pass rather than one finding at a time.
+    Every item runs to completion whatever the others do, and what came back is
+    handed over in two lists rather than reduced to one outcome: the results in
+    input order, and every failure named by its key.
+
+    That the successes survive a partial batch is the whole point of this
+    function existing beside :func:`map_bounded`. The calls have already been
+    made and paid for by the time a sibling fails, and a caller that would
+    rather keep them than be told the run was not clean should be able to.
 
     ``key`` turns an item into the name it is reported under; for an enriched
     finding that is its ``finding_id``.
@@ -222,6 +226,7 @@ async def map_bounded[I, O](
         *(guarded(item) for item in items), return_exceptions=True
     )
 
+    results: list[O] = []
     failures: list[ItemFailure] = []
     for item, outcome in zip(items, outcomes, strict=True):
         if isinstance(outcome, Exception):
@@ -229,10 +234,33 @@ async def map_bounded[I, O](
         elif isinstance(outcome, BaseException):
             # Cancellation is not this function's to swallow.
             raise outcome
+        else:
+            results.append(cast("O", outcome))
+    return results, failures
 
+
+async def map_bounded[I, O](
+    items: Sequence[I],
+    call: Callable[[I], Awaitable[O]],
+    *,
+    limit: int,
+    key: Callable[[I], str],
+) -> list[O]:
+    """Run ``call`` over every item, at most ``limit`` at a time.
+
+    All or nothing. Results come back in input order, and if anything failed,
+    every failure is reported together in one :class:`BatchError` naming the
+    item it belongs to — the same contract as a malformed CSV, so a broken run
+    is diagnosed in one pass rather than one finding at a time.
+
+    Use this where a partial answer would be worse than none.
+    :func:`gather_bounded` is the one to reach for otherwise; this is a thin
+    reduction over it.
+    """
+    results, failures = await gather_bounded(items, call, limit=limit, key=key)
     if failures:
         raise BatchError(failures, len(items))
-    return cast("list[O]", list(outcomes))
+    return results
 
 
-__all__ = ["TriageClient", "build_client", "map_bounded"]
+__all__ = ["TriageClient", "build_client", "gather_bounded", "map_bounded"]

@@ -53,9 +53,14 @@ and returns without building a client. It proves the `.env`, the CSVs and the re
 cost.
 
 A finding costs five model calls, so `--limit N` bounds what a run spends while the output is still
-being looked at. `-v` logs each request, `-vv` adds token usage. A failure — a malformed CSV, a
-finding with no registry row, a batch with failures in it — prints one message naming everything
-that went wrong and exits 1.
+being looked at. `-v` logs each request, `-vv` adds token usage.
+
+**A finding that fails does not stop the run.** The document is written either way, with the
+tickets that came through and, beside them, a `failures` entry naming each finding that produced
+none and why. Exit code 1 says the run was not clean; the file says which findings to look at
+again. Only the failures that make a run impossible at all — a malformed CSV, a finding with no
+registry row, a missing key — end it before anything is written, and each prints one message naming
+everything that went wrong.
 
 ## Tests
 

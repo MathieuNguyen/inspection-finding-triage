@@ -20,6 +20,12 @@ discover a typo with.
 
 Failures are reported the way the layers below report them: one message naming
 everything that went wrong, not a traceback and not the first problem only.
+
+A finding that fails is not one of those. It does not stop the run: the document
+is written with the tickets that came through and the failures recorded beside
+them, and the exit code — 1 rather than 0 — is what says the run was not clean.
+Only the failures that make a run impossible at all, a malformed CSV or a
+missing key, end it before anything is written.
 """
 
 from __future__ import annotations
@@ -236,6 +242,26 @@ def _write(document: TicketDocument, out: str) -> None:
     )
 
 
+def _report_failures(document: TicketDocument) -> None:
+    """Name every finding that produced no ticket.
+
+    The document already records these, so this is the courtesy of not making
+    someone open the file to find out the run was not clean.
+    """
+    if not document.failures:
+        return
+    total = document.tickets_generated + document.findings_failed
+    print(
+        f"{document.findings_failed} of {total} finding(s) produced no ticket:",
+        file=sys.stderr,
+    )
+    for failure in document.failures:
+        print(
+            f"  {failure.finding_id}: {failure.error}: {failure.detail}",
+            file=sys.stderr,
+        )
+
+
 def _run(args: argparse.Namespace, build: ClientFactory) -> int:
     """The pipeline, top to bottom."""
     settings = load_settings()
@@ -252,8 +278,14 @@ def _run(args: argparse.Namespace, build: ClientFactory) -> int:
         dry_run_report(settings, len(findings), len(registry), selected, sys.stdout)
         return 0
 
-    _write(asyncio.run(_triage(settings, selected, build)), args.out)
-    return 0
+    # Written whether or not every finding came through. A partial document is
+    # worth more than none: the calls behind it have been paid for, and it says
+    # which findings to look at again. The exit code is what reports that the
+    # run was not clean.
+    document = asyncio.run(_triage(settings, selected, build))
+    _write(document, args.out)
+    _report_failures(document)
+    return 1 if document.failures else 0
 
 
 def main(

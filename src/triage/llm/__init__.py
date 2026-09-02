@@ -17,7 +17,12 @@ needs them. ``reference/domain_knowledge.md`` is the read-only source those file
 were derived from and is not read at run time.
 """
 
-from triage.llm.client import TriageClient, build_client, map_bounded
+from triage.llm.client import (
+    TriageClient,
+    build_client,
+    gather_bounded,
+    map_bounded,
+)
 from triage.llm.exceptions import (
     BatchError,
     EmptyResponseError,
@@ -48,6 +53,7 @@ __all__ = [
     "TriageClient",
     "build_client",
     "build_prompt",
+    "gather_bounded",
     "load_policy",
     "load_prompt",
     "map_bounded",

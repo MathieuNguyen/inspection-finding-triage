@@ -190,8 +190,34 @@ class Ticket(BaseModel):
         return self
 
 
+class TicketFailure(BaseModel):
+    """One finding that produced no ticket, and what stopped it.
+
+    Recorded in the document rather than only on the terminal. A partial run is
+    read later, by someone who no longer has the run's output in front of them,
+    and a file that does not say what is missing from it reads as complete.
+
+    What is kept is what identifies the failure and what a person needs to act
+    on it. The exception itself is not serialisable and its traceback belongs in
+    the log, not in the deliverable.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    finding_id: FindingId
+    error: NonEmptyStr = Field(
+        description="The exception type that ended this finding."
+    )
+    detail: NonEmptyStr = Field(description="What it said.")
+
+
 class TicketDocument(BaseModel):
-    """The whole of ``tickets.json``: one ticket per input finding."""
+    """The whole of ``tickets.json``: the tickets, and the findings that failed.
+
+    A finding that could not be triaged does not silently vanish from the run.
+    It appears in :attr:`failures` instead, so the document accounts for every
+    finding it was given — either as a ticket or as a reason there is none.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -200,28 +226,43 @@ class TicketDocument(BaseModel):
         description="ISO-8601 timestamp; must carry a timezone.",
     )
     tickets_generated: int = Field(ge=0)
+    findings_failed: int = Field(default=0, ge=0)
     tickets: list[Ticket]
+    failures: list[TicketFailure] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
-    def _default_count(cls, data: Any) -> Any:
-        """Derive ``tickets_generated`` when the caller has not supplied it."""
-        if isinstance(data, dict) and "tickets_generated" not in data:
-            tickets = data.get("tickets")
-            if isinstance(tickets, list):
-                return {**data, "tickets_generated": len(tickets)}
-        return data
+    def _default_counts(cls, data: Any) -> Any:
+        """Derive each count from its list when the caller has not supplied it."""
+        if not isinstance(data, dict):
+            return data
+        derived = {}
+        for count, listing in (
+            ("tickets_generated", "tickets"),
+            ("findings_failed", "failures"),
+        ):
+            if count not in data and isinstance(data.get(listing), list):
+                derived[count] = len(data[listing])
+        return {**data, **derived} if derived else data
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Self:
-        if self.tickets_generated != len(self.tickets):
-            raise ValueError(
-                f"tickets_generated ({self.tickets_generated}) does not match "
-                f"the {len(self.tickets)} tickets present"
-            )
+        for count, label, length in (
+            (self.tickets_generated, "tickets", len(self.tickets)),
+            (self.findings_failed, "failures", len(self.failures)),
+        ):
+            if count != length:
+                raise ValueError(
+                    f"the count of {label} ({count}) does not match the "
+                    f"{length} present"
+                )
         for label, values in (
             ("ticket_id", [t.ticket_id for t in self.tickets]),
-            ("finding_id", [t.finding_id for t in self.tickets]),
+            (
+                "finding_id",
+                [t.finding_id for t in self.tickets]
+                + [f.finding_id for f in self.failures],
+            ),
         ):
             duplicates = sorted({v for v in values if values.count(v) > 1})
             if duplicates:
@@ -233,6 +274,7 @@ __all__ = [
     "ScoreBlock",
     "Ticket",
     "TicketDocument",
+    "TicketFailure",
     "TicketTextBlock",
     "UrgencyBlock",
     "UrgencyOverride",

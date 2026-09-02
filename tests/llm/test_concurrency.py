@@ -1,7 +1,10 @@
 """Running a call across a batch under a ceiling, and reporting what failed.
 
-The contract mirrors the CSV loader's: one run names every problem, so a broken
+Two reductions over the same gather. :func:`map_bounded` is all or nothing, and
+its contract mirrors the CSV loader's: one run names every problem, so a broken
 batch is diagnosed in a single pass rather than one finding at a time.
+:func:`gather_bounded` hands back both halves instead, for the caller that would
+rather keep the results it paid for than be told the run was not clean.
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ import asyncio
 
 import pytest
 
-from triage.llm import BatchError, map_bounded
+from triage.llm import BatchError, gather_bounded, map_bounded
 
 
 def _key(item: int) -> str:
@@ -122,3 +125,51 @@ async def test_cancellation_is_not_swallowed() -> None:
 
     with pytest.raises(asyncio.CancelledError):
         await map_bounded([1], cancels, limit=1, key=_key)
+
+
+async def test_gather_keeps_the_successes_beside_the_failures() -> None:
+    """The case a raising reduction cannot express: some of each.
+
+    ``map_bounded`` discards these results on its way to raising, which is the
+    right trade where a partial answer is worse than none and the wrong one
+    where the calls behind it have already been paid for.
+    """
+
+    async def fails_on_odd(item: int) -> int:
+        if item % 2:
+            raise ValueError(f"item {item} is odd")
+        return item * 2
+
+    results, failures = await gather_bounded(
+        list(range(6)), fails_on_odd, limit=2, key=_key
+    )
+
+    assert results == [0, 4, 8]
+    assert [failure.key for failure in failures] == ["F-0001", "F-0003", "F-0005"]
+
+
+async def test_gather_reports_no_failures_on_a_clean_run() -> None:
+    async def doubles(item: int) -> int:
+        return item * 2
+
+    results, failures = await gather_bounded([1, 2, 3], doubles, limit=2, key=_key)
+
+    assert results == [2, 4, 6]
+    assert failures == []
+
+
+async def test_gather_keeps_results_in_input_order() -> None:
+    """The results list is the successes in input order, gaps closed up."""
+
+    async def fails_on_one(item: int) -> int:
+        if item == 1:
+            raise ValueError("nope")
+        await asyncio.sleep((5 - item) / 1000)
+        return item
+
+    results, failures = await gather_bounded(
+        list(range(5)), fails_on_one, limit=5, key=_key
+    )
+
+    assert results == [0, 2, 3, 4]
+    assert [failure.key for failure in failures] == ["F-0001"]
