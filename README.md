@@ -7,11 +7,13 @@ summary, a recommended action, and a human-review flag.
 ## Status
 
 Work in progress. In place: the Pydantic model layer, the registry layer (CSV loading, the
-findings-to-equipment join, the batch redundancy index), and the LLM layer — the async structured
-call, run configuration, and the loaders that assemble prompts from the policy files.
+findings-to-equipment join, the batch redundancy index), the LLM layer — the async structured
+call, run configuration, and the loaders that assemble prompts from the policy files — the four
+policies and five prompts themselves, the urgency derivation, and the triage layer that runs the
+five passes over a batch and assembles the tickets.
 
-The policy and prompt markdown ships **empty and is being written**. The extraction pass, the
-scoring pass and the CLI are not built, so there is no end-to-end run command yet.
+The CLI is not built, so there is no end-to-end run command yet: `triage_batch` returns the
+`TicketDocument` a caller writes out.
 
 ## Setup
 
@@ -47,6 +49,8 @@ src/triage/
     redundancy.py  # Redundancy — structure parsed from a free-text registry column
     outputs.py     # ScoreBlock, Ticket, TicketDocument — the shape of tickets.json
   registry.py      # load + validate the CSVs, join findings to equipment, index the batch
+  urgency.py       # derive the urgency range a likelihood and an impact imply
+  triage.py        # the five passes, the ticket assembly, the review flag
   llm/
     settings.py    # LlmSettings, Effort — model, reasoning budgets, limits, all from the env
     exceptions.py  # what the layer raises; a batch reports every failure together
