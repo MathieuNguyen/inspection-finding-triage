@@ -42,7 +42,7 @@ src/triage/
   policies/      # the triage guidance as markdown — the scoring rules the model reads
   prompts/       # prompt templates, one {placeholder} per policy they compose in
   triage.py      # the five passes, the ticket assembly, the review flag
-  cli.py         # entry point: CSVs in, tickets out                     — not built
+  cli.py         # entry point: CSVs in, tickets out
 tests/
   models/        # mirrors src/triage/models/
   llm/           # mirrors src/triage/llm/
@@ -81,6 +81,17 @@ gains a field the prompt does not mention is the failure `tests/test_triage.py` 
 `_POLICY_SLOTS` states the prompt-to-policy table once instead of at five call sites, and the
 cache key names the pass and nothing else, because the prefix worth caching is the policy text
 every finding in the run shares.
+
+`cli.py` composes and does not decide. It reads argv, resolves `LlmSettings`, calls the registry
+loaders and `triage_batch`, and serialises the result — no scoring rule, and no default path into
+`data/`, because those two files are inputs the system can be run against rather than its subject.
+`--limit` slices **after** the join, so a bounded run still has the whole batch's redundancy index
+behind it. `--dry-run` resolves the settings and does the loading and the join, then returns before
+a client is built, which is what makes the wiring checkable for free. The SDK client arrives
+through `main`'s `build` seam for the same reason `TriageClient` takes rather than makes one. Every
+error the layers below raise already names everything that went wrong, so `main` prints it and
+returns 1 rather than rewording it or letting a traceback out; `PolicyError` and `PromptError` are
+`ValueError` rather than `LlmError` and have to be caught by name.
 
 `triage_batch` runs `map_bounded` over the enriched findings and returns a `TicketDocument`, whose
 validators are the batch-scope checks — the count, and no duplicated ticket or finding id. The
@@ -168,6 +179,12 @@ one call and unusable for three that go out together; `keyed_client` answers by
 `prompt_cache_key`, so a triage test says what each pass replies rather than what order the passes
 happened to run in. The `enriched` factory builds `EnrichedFinding`s from the same synthetic rows
 through the real `registry.join`. Async tests need no marker; `asyncio_mode = "auto"`.
+
+`tests/test_cli.py` keeps the entry point offline the same way: the stub goes in through `main`'s
+`build` argument, and an autouse fixture moves the run into `tmp_path` and sets a synthetic key, so
+`LlmSettings` finds no `.env` and a developer's own key is never what the suite runs against. Its
+one local stub, `ClosingStub`, wraps a shared one to add the `close` that `main` calls — the shared
+stubs have no reason to carry it.
 
 `tests/test_urgency.py` departs from the synthetic-rows pattern only in having no rows: the
 derivation is pure arithmetic over 200 combinations, so it asserts invariants across the whole grid

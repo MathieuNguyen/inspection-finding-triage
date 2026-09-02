@@ -6,14 +6,11 @@ summary, a recommended action, and a human-review flag.
 
 ## Status
 
-Work in progress. In place: the Pydantic model layer, the registry layer (CSV loading, the
+Runnable end to end. In place: the Pydantic model layer, the registry layer (CSV loading, the
 findings-to-equipment join, the batch redundancy index), the LLM layer — the async structured
 call, run configuration, and the loaders that assemble prompts from the policy files — the four
-policies and five prompts themselves, the urgency derivation, and the triage layer that runs the
-five passes over a batch and assembles the tickets.
-
-The CLI is not built, so there is no end-to-end run command yet: `triage_batch` returns the
-`TicketDocument` a caller writes out.
+policies and five prompts themselves, the urgency derivation, the triage layer that runs the five
+passes over a batch and assembles the tickets, and the CLI that ties them together.
 
 ## Setup
 
@@ -33,6 +30,33 @@ cp .env.example .env
 `.env` is gitignored. `.env.example` documents every setting: the model, the two reasoning
 budgets, the concurrency ceiling and the two retry budgets.
 
+## Run
+
+Two CSVs in, one ticket document out:
+
+```bash
+uv run triage data/inspection_findings.csv data/equipment_registry.csv
+```
+
+The paths are arguments rather than defaults — the files under `data/` are two inputs the system
+can be run against, not the system's subject. Output goes to `tickets.json`; `--out PATH` sends it
+elsewhere and `--out -` sends it to stdout.
+
+Before the first real run, rehearse it for free:
+
+```bash
+uv run triage data/inspection_findings.csv data/equipment_registry.csv --dry-run
+```
+
+`--dry-run` resolves the settings, loads both files and joins them, reports what it would triage —
+and returns without building a client. It proves the `.env`, the CSVs and the registry join at no
+cost.
+
+A finding costs five model calls, so `--limit N` bounds what a run spends while the output is still
+being looked at. `-v` logs each request, `-vv` adds token usage. A failure — a malformed CSV, a
+finding with no registry row, a batch with failures in it — prints one message naming everything
+that went wrong and exits 1.
+
 ## Tests
 
 ```bash
@@ -51,6 +75,7 @@ src/triage/
   registry.py      # load + validate the CSVs, join findings to equipment, index the batch
   urgency.py       # derive the urgency range a likelihood and an impact imply
   triage.py        # the five passes, the ticket assembly, the review flag
+  cli.py           # entry point: CSVs in, tickets out
   llm/
     settings.py    # LlmSettings, Effort — model, reasoning budgets, limits, all from the env
     exceptions.py  # what the layer raises; a batch reports every failure together
