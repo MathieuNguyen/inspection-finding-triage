@@ -1,7 +1,7 @@
 ---
-version: 1.0
+version: 1.1
 author: Mathieu Nguyen
-date: 2026-09-01
+date: 2026-09-02
 ---
 
 ## Task
@@ -52,6 +52,12 @@ everything into vagueness.
 Write plainly. No preamble, no ticket or equipment identifier for its own sake, no closing
 recommendation — the action is a separate field, written separately.
 
-**The line must be at most 300 characters, counting spaces. 301 characters is a failure.**
-Around two thirds of that budget is the working length. If you are at the cap you are
-describing rather than summarising.
+**Write between 250 and 280 characters, counting spaces.** That is the length of the
+answer, not a ceiling to work up to. 300 is where the schema rejects it outright, and an
+answer that reaches the cap has stopped summarising and started describing.
+
+The demands above will not all fit every time. When they do not, drop in this order: the
+inspection programme first, then the detection method, then the criterion a measurement
+was judged against. What is wrong, what it is on, and why it matters stay in every time,
+and so does a stated uncertainty — a line that reads as more certain than the finding it
+came from is the one failure worth spending characters to avoid.

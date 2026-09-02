@@ -98,11 +98,11 @@ class LlmSettings(BaseSettings):
         ),
     )
     max_output_attempts: int = Field(
-        default=2,
+        default=3,
         ge=1,
         description=(
-            "Total attempts at a usable answer, counting the first. A second "
-            "attempt re-asks with the validation errors from the first."
+            "Total attempts at a usable answer, counting the first. Each later "
+            "attempt re-asks with the validation errors from the one before."
         ),
     )
 

@@ -163,6 +163,15 @@ fourth is an output requirement rather than a scoring rule, so `scoring_likeliho
 - Uncertainty is stated in the rationale, never resolved by picking a mid-range score. Uniform
   mid-range output across findings is a failure mode, not a safe default.
 
+**Where a prompt's demands compete, it says which gives way.** `TICKET_TEXT_LIMIT` is 300 but
+`TICKET_TEXT_TARGET` is what `TicketTextBlock.text`'s description asks for and what `summary.md`
+and `actions.md` state: a cap alone gives the model nothing to stop short of, and an answer landing
+on 299 has no margin for a miscount. Both prompts stack obligations against that budget, so both
+now name the order those obligations are dropped in — otherwise the model resolves the conflict
+differently each run, and some of those runs are over the cap. The re-ask cannot quote the
+offending text back, because `parse` raises before the response reaches us; it asks for the answer
+again in full rather than for an edit to something the model cannot see.
+
 ## Tests
 
 `uv run pytest`. Unit tests use synthetic rows only: the factory fixtures in `tests/conftest.py`

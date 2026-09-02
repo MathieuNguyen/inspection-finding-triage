@@ -1,5 +1,5 @@
 ---
-version: 1.1
+version: 1.2
 author: Mathieu Nguyen
 date: 2026-09-02
 ---
@@ -59,8 +59,13 @@ same as writing a vague one.
 
 Write plainly. No preamble, no restatement of the finding.
 
-**The line must be at most 300 characters, counting spaces. 301 characters is a failure.**
-Around two thirds of that budget is the working length.
+**Write between 250 and 280 characters, counting spaces.** That is the length of the
+answer, not a ceiling to work up to; 300 is where the schema rejects it outright.
+
+When it will not fit, cut the reasoning, never the activity. The verb, the object and the
+check that closes it out are the answer — a line that explains why the work matters but
+leaves someone unable to start it has spent its characters on the wrong thing. Where an
+override applies, the compliance step is part of the activity and stays with it.
 
 ## Policy
 

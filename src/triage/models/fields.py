@@ -17,6 +17,15 @@ SCORE_RANGE = (1, 10)
 TICKET_TEXT_LIMIT = 300
 """Character cap on ``summary`` and ``recommended_action``."""
 
+TICKET_TEXT_TARGET = (250, 280)
+"""The band those two fields are written to aim for.
+
+A cap on its own gives the model no reason to stop short of it, and an answer
+that lands on 299 has no margin for a miscount — it is one clause away from
+being rejected for length rather than judged on content. The band is what the
+field description asks for; :data:`TICKET_TEXT_LIMIT` stays what is enforced.
+"""
+
 URGENCY_OVERRIDE_FLOOR = 9
 """Lowest urgency a finding meeting an override condition may be given.
 
@@ -107,6 +116,7 @@ __all__ = [
     "RegistryScore",
     "SCORE_RANGE",
     "TICKET_TEXT_LIMIT",
+    "TICKET_TEXT_TARGET",
     "URGENCY_OVERRIDE_FLOOR",
     "TicketId",
     "TicketText",

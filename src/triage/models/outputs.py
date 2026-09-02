@@ -23,6 +23,7 @@ from pydantic import (
 from triage.models.fields import (
     SCORE_RANGE,
     TICKET_TEXT_LIMIT,
+    TICKET_TEXT_TARGET,
     URGENCY_OVERRIDE_FLOOR,
     FindingId,
     NonEmptyStr,
@@ -116,14 +117,20 @@ class TicketTextBlock(BaseModel):
     The cap is enforced in a validator for the same reason :class:`ScoreBlock`'s
     range is: a strict structured-output schema drops the constraint, so an
     overrun has to fail here, where the caller can re-ask on it.
+
+    The description asks for :data:`~triage.models.TICKET_TEXT_TARGET` rather
+    than the cap. Aiming at the cap is what puts answers over it: the model has
+    no way to count precisely, so the only reliable margin is one it was told to
+    leave.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     text: NonEmptyStr = Field(
         description=(
-            f"At most {TICKET_TEXT_LIMIT} characters, counting spaces. "
-            "Longer answers are rejected."
+            f"Between {TICKET_TEXT_TARGET[0]} and {TICKET_TEXT_TARGET[1]} "
+            f"characters, counting spaces. More than {TICKET_TEXT_LIMIT} is "
+            "rejected."
         )
     )
 

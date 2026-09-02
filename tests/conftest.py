@@ -23,7 +23,13 @@ import pytest
 from pydantic import ValidationError
 
 from triage.llm import LlmSettings
-from triage.models import Equipment, Finding, ScoreBlock
+from triage.models import (
+    TICKET_TEXT_LIMIT,
+    Equipment,
+    Finding,
+    ScoreBlock,
+    TicketTextBlock,
+)
 from triage.registry import EnrichedFinding, join
 
 CsvRow = dict[str, str]
@@ -140,6 +146,20 @@ def out_of_range() -> ValidationError:
     except ValidationError as exc:
         return exc
     raise AssertionError("ScoreBlock accepted a score of 12")
+
+
+def too_long() -> ValidationError:
+    """The other failure the output retry exists for: prose over the cap.
+
+    The one actually seen in a run — a model that writes a good summary and
+    writes too much of it. Built the same way as :func:`out_of_range`, from the
+    model rather than by hand.
+    """
+    try:
+        TicketTextBlock(text="x" * (TICKET_TEXT_LIMIT + 17))
+    except ValidationError as exc:
+        return exc
+    raise AssertionError("TicketTextBlock accepted an overlong text")
 
 
 class StubResponse:
@@ -273,3 +293,9 @@ def keyed_client() -> Callable[..., KeyedStubClient]:
 def invalid_output() -> Callable[[], ValidationError]:
     """The failure the output retry exists for: a score outside 1-10."""
     return out_of_range
+
+
+@pytest.fixture
+def overlong_output() -> Callable[[], ValidationError]:
+    """The same retry, driven by ticket prose over the character cap."""
+    return too_long

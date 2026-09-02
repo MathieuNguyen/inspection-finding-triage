@@ -161,9 +161,13 @@ def _correction(error: ValidationError) -> str:
     """The re-ask.
 
     ``parse`` raises before the response object reaches us, so the offending
-    output cannot be quoted back — only what was wrong with it. That is enough to
-    fix a score out of range or a missing rationale, which is what this retry is
-    for.
+    output cannot be quoted back — only what was wrong with it.
+
+    Which is why this asks for the answer again in full rather than for an edit.
+    The model cannot see the text it would be editing, so "change only what was
+    wrong" is an instruction it has no way to follow; for a length overrun,
+    the one failure where the previous wording matters most, it is worse than
+    saying nothing.
     """
     problems = "\n".join(
         f"- {'.'.join(str(part) for part in err['loc']) or '<root>'}: {err['msg']}"
@@ -172,8 +176,8 @@ def _correction(error: ValidationError) -> str:
     return (
         "Your previous answer was rejected by the output schema:\n"
         f"{problems}\n"
-        "Return a corrected answer that satisfies every constraint. Change only "
-        "what was wrong."
+        "Your previous answer is not shown back to you. Write the answer again "
+        "in full, satisfying every constraint."
     )
 
 

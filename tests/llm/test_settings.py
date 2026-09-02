@@ -23,6 +23,8 @@ def test_the_defaults_are_the_intended_production_values(settings: Settings) -> 
     assert config.model == "gpt-5.6-luna"
     assert config.writing_effort == "medium"
     assert config.judging_effort == "high"
+    assert config.max_retries == 3
+    assert config.max_output_attempts == 3
 
 
 def test_writing_thinks_less_than_judging(settings: Settings) -> None:
