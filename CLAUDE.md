@@ -37,8 +37,9 @@ summary, a recommended action, and a human-review flag.
 src/triage/
   models/        # Pydantic models: Finding, Equipment, Ticket + the blocks each pass authors
   registry.py    # load + validate the CSVs, join findings to equipment, index the batch
+  urgency.py     # derive the urgency range a likelihood and an impact imply
   llm/           # settings, exceptions, the structured call, prompt + policy loading
-  policies/      # the triage guidance as markdown — no scoring rule is written in Python
+  policies/      # the triage guidance as markdown — the scoring rules the model reads
   prompts/       # prompt templates, one {placeholder} per policy they compose in
   extraction.py  # structured extraction from finding_description        — not built
   triage.py      # scoring pass, cross-finding checks, review-flag logic — not built
@@ -71,8 +72,7 @@ A template's only placeholders are policy slots. A finding's own data goes to th
 that keeps `instructions` byte-identical across a batch, which is what `prompt_cache_key` needs to
 be worth passing. Prompts frame, policies judge: a prompt states the task, names its inputs and
 states the output contract, and never restates a rule a policy already carries.
-`src/triage/prompts/README.md` holds the per-file placeholder table. `scoring_urgency.md` is the
-one template still unwritten.
+`src/triage/prompts/README.md` holds the per-file placeholder table.
 
 ## Read-only inputs — schema only, never content
 
@@ -92,8 +92,7 @@ Anything that would make the system score these 21 findings well but a 22nd find
 
 **Decided:** the notes are encoded as **markdown policy files in model context**, one per
 dimension, in `src/triage/policies/` — `likelihood.md`, `impact.md`, `urgency.md`, `errors.md`.
-Those four files are the only triage guidance that reaches the model, and no scoring rule is
-written in Python.
+Those four files are the only triage guidance that reaches the model.
 
 `reference/domain_knowledge.md` is the read-only source they were derived from and is **not read
 at run time**. One authoritative copy per dimension is the whole point: where the two differ, the
@@ -102,6 +101,16 @@ policy files are what the system does. Never retype either into source.
 Editing a policy is a markdown edit — no code change, no schema change. Each file carries `---`
 front matter recording version, author and date; that is where a change of guidance is recorded.
 
+**Urgency is the one dimension with arithmetic behind it.** `urgency.py` turns a likelihood and an
+impact into the *range* they imply — impact anchors, likelihood moves it, three limits bound the
+result — and the model scores inside that range, writes the rationale and applies the overrides.
+The numbers live in `urgency.py`; the reasoning for them lives in `urgency.md`. Neither restates the
+other, so there is still one authoritative copy of each. The range is advisory: `UrgencyBounds.contains`
+says whether the model stayed inside it, and a departure is a review flag rather than a rejection.
+`UrgencyBlock.override` names which override condition fired, and a validator holds an override to
+`URGENCY_OVERRIDE_FLOOR`. `Ticket.urgency` stays a plain `ScoreBlock` — which override fired is how
+the number was reached, not part of the delivered shape.
+
 Non-negotiable, and all four must reach the model. The policy text carries the first three; the
 fourth is an output requirement rather than a scoring rule, so `scoring_likelihood.md` and
 `scoring_impact.md` state it and no policy file does:
@@ -109,7 +118,11 @@ fourth is an output requirement rather than a scoring rule, so `scoring_likeliho
 - `reliability_score` is inverted relative to likelihood (10 = highly reliable). Getting this
   backwards is the single most common failure.
 - The two urgency overrides — an impaired protection layer without a recorded deviation, and reduced
-  evacuation capacity below POB — force immediate urgency, whatever the derived score says.
+  evacuation capacity below POB — force immediate urgency, whatever the derived score says. Neither
+  is confirmable from the inputs — there is no deviation register and no POB figure — so `urgency.md`
+  says what to do about that rather than leaving the model to guess differently each run. A protection
+  layer can be impaired while still functioning, which is why one dead head in a 2oo3 group fires the
+  override even though it is a degradation rather than a defeat for impact.
 - Redundancy is a claim to check, not a fact to credit. Findings against both legs of a pair in one
   batch means the pair is not redundant, so findings cannot be scored purely in isolation.
 - Uncertainty is stated in the rationale, never resolved by picking a mid-range score. Uniform
@@ -127,6 +140,11 @@ The suite is offline and needs no API key: `tests/llm/conftest.py` supplies hand
 (`stub_client`, `response`, `invalid_output`) and a `settings` factory that never reads the
 environment or a `.env`. No mocking library — a stub records what was sent, because the outgoing
 request is part of the contract. Async tests need no marker; `asyncio_mode = "auto"`.
+
+`tests/test_urgency.py` departs from the synthetic-rows pattern only in having no rows: the
+derivation is pure arithmetic over 200 combinations, so it asserts invariants across the whole grid
+— ordering, monotonicity in both dimensions, and each of the three limits — rather than picking
+examples.
 
 Nothing asserts on what a policy *says*. That text is going to be rewritten as the judgement
 behind it changes, and a test pinning its wording would be friction the file-based arrangement

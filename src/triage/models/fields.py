@@ -17,6 +17,14 @@ SCORE_RANGE = (1, 10)
 TICKET_TEXT_LIMIT = 300
 """Character cap on ``summary`` and ``recommended_action``."""
 
+URGENCY_OVERRIDE_FLOOR = 9
+"""Lowest urgency a finding meeting an override condition may be given.
+
+``policies/urgency.md`` calls both override conditions immediate, and 9-10 is
+"today" on its scale. A floor rather than a fixed 10, so the model can still say
+whether the protection layer is defeated or merely degraded.
+"""
+
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 """Trimmed text that must carry at least one character."""
 
@@ -99,6 +107,7 @@ __all__ = [
     "RegistryScore",
     "SCORE_RANGE",
     "TICKET_TEXT_LIMIT",
+    "URGENCY_OVERRIDE_FLOOR",
     "TicketId",
     "TicketText",
     "TrimmedStr",

@@ -12,10 +12,13 @@ from pydantic import ValidationError
 from triage.models import (
     SCORE_RANGE,
     TICKET_TEXT_LIMIT,
+    URGENCY_OVERRIDE_FLOOR,
     ScoreBlock,
     Ticket,
     TicketDocument,
     TicketTextBlock,
+    UrgencyBlock,
+    UrgencyOverride,
 )
 
 
@@ -28,6 +31,42 @@ def test_score_outside_range_rejected(value: int) -> None:
 def test_score_rationale_must_say_something() -> None:
     with pytest.raises(ValidationError):
         ScoreBlock(score=5, rationale="   ")
+
+
+def test_urgency_override_forces_the_top_band() -> None:
+    """An override condition is immediate; a score below the floor contradicts it."""
+    with pytest.raises(ValidationError):
+        UrgencyBlock(
+            score=URGENCY_OVERRIDE_FLOOR - 1,
+            rationale="Says immediate, scores otherwise.",
+            override=UrgencyOverride.PROTECTION_LAYER,
+        )
+
+
+@pytest.mark.parametrize("score", [URGENCY_OVERRIDE_FLOOR, SCORE_RANGE[1]])
+def test_urgency_override_leaves_room_inside_the_top_band(score: int) -> None:
+    """A floor, not a fixed 10: defeated and degraded do not score the same."""
+    block = UrgencyBlock(
+        score=score,
+        rationale="Evacuation capacity reduced; POB margin not verifiable.",
+        override=UrgencyOverride.EVACUATION_CAPACITY,
+    )
+    assert block.score == score
+
+
+def test_urgency_without_an_override_takes_any_score_in_range() -> None:
+    assert UrgencyBlock(score=2, rationale="Backlog.", override=None).score == 2
+
+
+def test_urgency_inherits_the_score_range() -> None:
+    with pytest.raises(ValidationError):
+        UrgencyBlock(score=SCORE_RANGE[1] + 1, rationale="Out of range.", override=None)
+
+
+def test_urgency_override_must_be_answered() -> None:
+    """Explicit null rather than an absent field: the question is always asked."""
+    with pytest.raises(ValidationError):
+        UrgencyBlock(score=5, rationale="Silent on the overrides.")
 
 
 def test_text_block_takes_the_whole_budget() -> None:
