@@ -8,6 +8,7 @@ file; the failure is what the caller retries on.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Self
 
 from pydantic import (
@@ -22,6 +23,7 @@ from pydantic import (
 from triage.models.fields import (
     SCORE_RANGE,
     TICKET_TEXT_LIMIT,
+    URGENCY_OVERRIDE_FLOOR,
     FindingId,
     NonEmptyStr,
     TicketId,
@@ -56,6 +58,53 @@ class ScoreBlock(BaseModel):
         if not low <= value <= high:
             raise ValueError(f"score must be between {low} and {high}, got {value}")
         return value
+
+
+class UrgencyOverride(StrEnum):
+    """A condition that forces immediate urgency, whatever the derived score.
+
+    Both are stated in ``src/triage/policies/urgency.md``. Naming them here makes
+    the model's determination a field rather than a claim buried in prose: a
+    later pass can route on it, and the score can be checked against it.
+    """
+
+    PROTECTION_LAYER = "protection_layer"
+    """A protection layer left impaired without a recorded deviation."""
+
+    EVACUATION_CAPACITY = "evacuation_capacity"
+    """Evacuation capacity reduced below the POB count."""
+
+
+class UrgencyBlock(ScoreBlock):
+    """The urgency pass's answer: a score, its reasoning, and any override.
+
+    Separate from :class:`ScoreBlock` because urgency is the one dimension with
+    conditions that force the score regardless of what likelihood and impact
+    imply. ``Ticket.urgency`` stays a plain ``ScoreBlock``: which override fired
+    is how this ticket got its number, not part of the delivered shape.
+
+    The range from :func:`triage.urgency.derive_urgency` is deliberately not
+    enforced here. Leaving it is a judgement the model is allowed to make and a
+    human is asked to check, so a departure sets the review flag rather than
+    failing. Only the 1-10 range and the override floor are hard.
+    """
+
+    override: UrgencyOverride | None = Field(
+        description=(
+            "The override condition this finding meets, or null if it meets "
+            f"neither. When set, the score must be at least "
+            f"{URGENCY_OVERRIDE_FLOOR}."
+        )
+    )
+
+    @model_validator(mode="after")
+    def _override_forces_immediate(self) -> Self:
+        if self.override is not None and self.score < URGENCY_OVERRIDE_FLOOR:
+            raise ValueError(
+                f"{self.override.value} is an override condition: score must be "
+                f"at least {URGENCY_OVERRIDE_FLOOR}, got {self.score}"
+            )
+        return self
 
 
 class TicketTextBlock(BaseModel):
@@ -173,4 +222,11 @@ class TicketDocument(BaseModel):
         return self
 
 
-__all__ = ["ScoreBlock", "Ticket", "TicketDocument", "TicketTextBlock"]
+__all__ = [
+    "ScoreBlock",
+    "Ticket",
+    "TicketDocument",
+    "TicketTextBlock",
+    "UrgencyBlock",
+    "UrgencyOverride",
+]

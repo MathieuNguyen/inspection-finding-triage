@@ -9,8 +9,8 @@ not here — they live in `src/triage/policies` and are composed in through a pl
 | `summary.md` | — | `TicketTextBlock` | `Effort.WRITING` |
 | `scoring_likelihood.md` | `{likelihood_policy}` | `ScoreBlock` | `Effort.JUDGING` |
 | `scoring_impact.md` | `{impact_policy}`, `{errors_policy}` | `ScoreBlock` | `Effort.JUDGING` |
+| `scoring_urgency.md` | `{urgency_policy}` | `UrgencyBlock` | `Effort.JUDGING` |
 | `actions.md` | `{urgency_policy}` | `TicketTextBlock` | `Effort.WRITING` |
-| `scoring_urgency.md` | not yet written | `ScoreBlock` | `Effort.JUDGING` |
 
 ## Templates take policies; findings arrive separately
 

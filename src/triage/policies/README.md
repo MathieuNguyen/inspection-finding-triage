@@ -1,7 +1,12 @@
 # Triage policies
 
-These four files are the **only** triage guidance that reaches the model. No scoring rule is written
-in Python, and `reference/domain_knowledge.md` is not read at run time.
+These four files are the **only** triage guidance that reaches the model, and
+`reference/domain_knowledge.md` is not read at run time.
+
+Scoring guidance is not written in Python. The one exception is arithmetic rather than guidance:
+`src/triage/urgency.py` derives the range `urgency.md`'s limits imply for a given likelihood and
+impact, and hands it to the model as an input. The reasoning behind those limits lives in
+`urgency.md` and only there — the two do not restate each other.
 
 | File | Question it answers |
 | --- | --- |

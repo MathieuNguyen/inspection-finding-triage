@@ -34,7 +34,7 @@ def test_every_policy_loads(name: str) -> None:
 
 @pytest.mark.parametrize("name", PROMPTS)
 def test_every_prompt_file_exists(name: str) -> None:
-    """One prompt is still unwritten; loading an empty file must still work."""
+    """Loading an empty file must still work: the prompts ship blank."""
     assert isinstance(load_prompt(name), str)
 
 
