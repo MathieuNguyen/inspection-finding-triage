@@ -37,10 +37,10 @@ class Effort(StrEnum):
     """
 
     WRITING = "writing"
-    """Extraction, summaries, recommended actions. Reading and rephrasing."""
+    """Summaries and recommended actions. Reading and rephrasing."""
 
     JUDGING = "judging"
-    """Scoring and review flags. Weighing evidence to reach a defensible number."""
+    """Scoring. Weighing evidence to reach a defensible number."""
 
 
 class LlmSettings(BaseSettings):
@@ -79,7 +79,12 @@ class LlmSettings(BaseSettings):
         default="high", description="Reasoning budget for Effort.JUDGING."
     )
     max_concurrency: int = Field(
-        default=6, ge=1, description="How many requests may be in flight at once."
+        default=6,
+        ge=1,
+        description=(
+            "How many findings are assessed at once. Counts findings rather than "
+            "requests: a finding's three concurrent passes sit inside one slot."
+        ),
     )
     request_timeout: float = Field(
         default=120.0, gt=0, description="Seconds before a single request is abandoned."

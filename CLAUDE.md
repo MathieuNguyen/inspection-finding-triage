@@ -41,8 +41,7 @@ src/triage/
   llm/           # settings, exceptions, the structured call, prompt + policy loading
   policies/      # the triage guidance as markdown — the scoring rules the model reads
   prompts/       # prompt templates, one {placeholder} per policy they compose in
-  extraction.py  # structured extraction from finding_description        — not built
-  triage.py      # scoring pass, cross-finding checks, review-flag logic — not built
+  triage.py      # the five passes, the ticket assembly, the review flag
   cli.py         # entry point: CSVs in, tickets out                     — not built
 tests/
   models/        # mirrors src/triage/models/
@@ -74,12 +73,37 @@ be worth passing. Prompts frame, policies judge: a prompt states the task, names
 states the output contract, and never restates a rule a policy already carries.
 `src/triage/prompts/README.md` holds the per-file placeholder table.
 
+`triage.py` is the layer that calls all of the above. Five passes in three stages: summary,
+likelihood and impact go out together; urgency waits for both scores and the range `urgency.py`
+derives from them; the recommended action waits for the urgency it is scheduling against. One
+`user_input` builder per pass, each mirroring the field list its prompt names — a builder that
+gains a field the prompt does not mention is the failure `tests/test_triage.py` exists to catch.
+`_POLICY_SLOTS` states the prompt-to-policy table once instead of at five call sites, and the
+cache key names the pass and nothing else, because the prefix worth caching is the policy text
+every finding in the run shares.
+
+`triage_batch` runs `map_bounded` over the enriched findings and returns a `TicketDocument`, whose
+validators are the batch-scope checks — the count, and no duplicated ticket or finding id. The
+ceiling counts **findings, not requests**: a finding's three-way fan-out sits inside one slot, so
+requests in flight can reach three times `max_concurrency` at that step. `ticket_id` mirrors the
+finding number (`F-1005` becomes `TKT-1005`), so rerunning a subset does not renumber tickets that
+did not change. `Ticket.urgency` is narrowed from `UrgencyBlock` to a plain `ScoreBlock`
+explicitly, rather than left to serialisation to drop the override.
+
+**Review is unconditional for now**: every ticket carries `review_required=True`, because none of
+them reaches the work queue without a human approving it. `review_reason` is not a constant,
+though — it opens with the standing rule and then names whatever is worth looking at first on that
+ticket: an override that fired, a score that left its derived range, a redundancy claim this batch
+contradicts, a partner with no registry row, a Safety Critical Element. Those notes are facts about
+how the ticket was produced, not scoring rules; the reasoning behind each stays in the policy that
+produced it.
+
 ## Read-only inputs — schema only, never content
 
 `data/` and `reference/` are **read-only**. Nothing in the codebase writes to them.
 
 - `data/inspection_findings.csv`, `data/equipment_registry.csv` — use the **column names and types**
-  to shape the Pydantic models and the extraction schema. The **row content is off limits** as a
+  to shape the Pydantic models and the prompts' field lists. The **row content is off limits** as a
   source of logic: no hard-coded equipment IDs, no rules reverse-engineered from specific rows, no
   test fixtures copied from them. They are two sample inputs for running the system, nothing more.
 - `reference/example_ticket.json` — defines the **output structure and the expected depth of the
@@ -136,10 +160,14 @@ just the field it exercises. `tests/test_schema_conformance.py` is the one place
 and `reference/`, and it asserts structure only — rows validate, the join is total, the example
 ticket round-trips. Never assert on a score, an equipment ID, or a row count.
 
-The suite is offline and needs no API key: `tests/llm/conftest.py` supplies hand-written stubs
-(`stub_client`, `response`, `invalid_output`) and a `settings` factory that never reads the
-environment or a `.env`. No mocking library — a stub records what was sent, because the outgoing
-request is part of the contract. Async tests need no marker; `asyncio_mode = "auto"`.
+The suite is offline and needs no API key: `tests/conftest.py` supplies hand-written stubs
+(`stub_client`, `keyed_client`, `response`, `invalid_output`) and a `settings` factory that never
+reads the environment or a `.env`. No mocking library — a stub records what was sent, because the
+outgoing request is part of the contract. `stub_client` answers in call order, which is right for
+one call and unusable for three that go out together; `keyed_client` answers by
+`prompt_cache_key`, so a triage test says what each pass replies rather than what order the passes
+happened to run in. The `enriched` factory builds `EnrichedFinding`s from the same synthetic rows
+through the real `registry.join`. Async tests need no marker; `asyncio_mode = "auto"`.
 
 `tests/test_urgency.py` departs from the synthetic-rows pattern only in having no rows: the
 derivation is pure arithmetic over 200 combinations, so it asserts invariants across the whole grid
