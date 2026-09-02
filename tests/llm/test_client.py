@@ -23,7 +23,7 @@ from triage.llm import (
     RefusalError,
     TriageClient,
 )
-from triage.models import ScoreBlock
+from triage.models import TICKET_TEXT_LIMIT, ScoreBlock, TicketTextBlock
 
 Settings = Callable[..., LlmSettings]
 Client = Callable[..., Any]
@@ -172,6 +172,48 @@ async def test_output_that_never_validates_gives_up_and_says_why(
     assert caught.value.attempts == 3
     assert "score" in str(caught.value)
     assert len(stub.calls) == 3
+
+
+async def test_an_overlong_answer_is_re_asked_and_can_succeed(
+    settings: Settings, stub_client: Client, response: Response, overlong_output: Invalid
+) -> None:
+    """The failure a run actually hits: a good summary, written too long.
+
+    Every other retry test here drives the loop with a score out of range. This
+    one drives it with the constraint the model has the hardest time counting.
+    """
+    answer = TicketTextBlock(text="Synthetic summary.")
+    stub = stub_client(overlong_output(), response(answer))
+    client = _wire(stub, settings, max_output_attempts=2)
+
+    result = await client.structured(
+        instructions="Synthetic instructions.",
+        user_input="Synthetic finding.",
+        text_format=TicketTextBlock,
+        effort=Effort.WRITING,
+    )
+
+    assert result is answer
+    assert len(stub.calls) == 2
+
+
+async def test_the_re_ask_names_the_character_limit(
+    settings: Settings, stub_client: Client, response: Response, overlong_output: Invalid
+) -> None:
+    """The model cannot see the text it overran, so the bound has to be restated."""
+    stub = stub_client(overlong_output(), response(TicketTextBlock(text="Short.")))
+    client = _wire(stub, settings, max_output_attempts=2)
+    await client.structured(
+        instructions="Synthetic instructions.",
+        user_input="Synthetic finding.",
+        text_format=TicketTextBlock,
+        effort=Effort.WRITING,
+    )
+
+    correction = stub.calls[1]["input"][-1]
+    assert correction["role"] == "user"
+    assert "text" in correction["content"]
+    assert str(TICKET_TEXT_LIMIT) in correction["content"]
 
 
 async def test_a_single_attempt_does_not_re_ask(

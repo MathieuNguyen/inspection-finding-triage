@@ -42,7 +42,7 @@ src/triage/
   policies/      # the triage guidance as markdown — the scoring rules the model reads
   prompts/       # prompt templates, one {placeholder} per policy they compose in
   triage.py      # the five passes, the ticket assembly, the review flag
-  cli.py         # entry point: CSVs in, tickets out                     — not built
+  cli.py         # entry point: CSVs in, tickets out
 tests/
   models/        # mirrors src/triage/models/
   llm/           # mirrors src/triage/llm/
@@ -56,9 +56,12 @@ one `CsvValidationError` listing every bad line rather than failing on the first
 not fatal.
 
 `llm/` is the only code that makes a network call. `TriageClient.structured` is the single entry
-point; `map_bounded` runs it across a batch and raises one `BatchError` naming every failure, the
-same contract as `CsvValidationError`. Two retry budgets, kept apart: transport failures are the
-SDK's `max_retries`, while `max_output_attempts` re-asks when a response fails *our* validation —
+point. `gather_bounded` runs it across a batch and hands back the results and the failures side by
+side; `map_bounded` is the thin all-or-nothing reduction over it, raising one `BatchError` naming
+every failure, the same contract as `CsvValidationError`. Which one a caller wants is whether a
+partial answer beats none — for a batch of findings whose calls are already paid for, it does.
+Two retry budgets, kept apart: transport failures are the SDK's `max_retries`, while
+`max_output_attempts` re-asks when a response fails *our* validation —
 a score outside 1–10 is well-formed JSON that `ScoreBlock` rejects. Reasoning effort is chosen by
 kind of work, `Effort.WRITING` or `Effort.JUDGING`, never by naming a level at a call site.
 
@@ -82,9 +85,25 @@ gains a field the prompt does not mention is the failure `tests/test_triage.py` 
 cache key names the pass and nothing else, because the prefix worth caching is the policy text
 every finding in the run shares.
 
-`triage_batch` runs `map_bounded` over the enriched findings and returns a `TicketDocument`, whose
-validators are the batch-scope checks — the count, and no duplicated ticket or finding id. The
-ceiling counts **findings, not requests**: a finding's three-way fan-out sits inside one slot, so
+`cli.py` composes and does not decide. It reads argv, resolves `LlmSettings`, calls the registry
+loaders and `triage_batch`, and serialises the result — no scoring rule, and no default path into
+`data/`, because those two files are inputs the system can be run against rather than its subject.
+`--limit` slices **after** the join, so a bounded run still has the whole batch's redundancy index
+behind it. `--dry-run` resolves the settings and does the loading and the join, then returns before
+a client is built, which is what makes the wiring checkable for free. The SDK client arrives
+through `main`'s `build` seam for the same reason `TriageClient` takes rather than makes one. Every
+error the layers below raise already names everything that went wrong, so `main` prints it and
+returns 1 rather than rewording it or letting a traceback out; `PolicyError` and `PromptError` are
+`ValueError` rather than `LlmError` and have to be caught by name.
+
+`triage_batch` runs `gather_bounded` over the enriched findings and returns a `TicketDocument`
+recording both outcomes: the tickets, and a `TicketFailure` per finding that produced none. A
+failure does not take the batch down — the siblings' calls have already been made, and a run that
+discarded them would cost more and say less. The document's validators are the batch-scope checks —
+the two counts, no duplicated ticket id, and no finding id claimed by both a ticket and a failure.
+The CLI writes the document whatever it holds and exits 1 when it holds failures.
+
+The ceiling counts **findings, not requests**: a finding's three-way fan-out sits inside one slot, so
 requests in flight can reach three times `max_concurrency` at that step. `ticket_id` mirrors the
 finding number (`F-1005` becomes `TKT-1005`), so rerunning a subset does not renumber tickets that
 did not change. `Ticket.urgency` is narrowed from `UrgencyBlock` to a plain `ScoreBlock`
@@ -152,6 +171,15 @@ fourth is an output requirement rather than a scoring rule, so `scoring_likeliho
 - Uncertainty is stated in the rationale, never resolved by picking a mid-range score. Uniform
   mid-range output across findings is a failure mode, not a safe default.
 
+**Where a prompt's demands compete, it says which gives way.** `TICKET_TEXT_LIMIT` is 300 but
+`TICKET_TEXT_TARGET` is what `TicketTextBlock.text`'s description asks for and what `summary.md`
+and `actions.md` state: a cap alone gives the model nothing to stop short of, and an answer landing
+on 299 has no margin for a miscount. Both prompts stack obligations against that budget, so both
+now name the order those obligations are dropped in — otherwise the model resolves the conflict
+differently each run, and some of those runs are over the cap. The re-ask cannot quote the
+offending text back, because `parse` raises before the response reaches us; it asks for the answer
+again in full rather than for an edit to something the model cannot see.
+
 ## Tests
 
 `uv run pytest`. Unit tests use synthetic rows only: the factory fixtures in `tests/conftest.py`
@@ -168,6 +196,12 @@ one call and unusable for three that go out together; `keyed_client` answers by
 `prompt_cache_key`, so a triage test says what each pass replies rather than what order the passes
 happened to run in. The `enriched` factory builds `EnrichedFinding`s from the same synthetic rows
 through the real `registry.join`. Async tests need no marker; `asyncio_mode = "auto"`.
+
+`tests/test_cli.py` keeps the entry point offline the same way: the stub goes in through `main`'s
+`build` argument, and an autouse fixture moves the run into `tmp_path` and sets a synthetic key, so
+`LlmSettings` finds no `.env` and a developer's own key is never what the suite runs against. Its
+one local stub, `ClosingStub`, wraps a shared one to add the `close` that `main` calls — the shared
+stubs have no reason to carry it.
 
 `tests/test_urgency.py` departs from the synthetic-rows pattern only in having no rows: the
 derivation is pure arithmetic over 200 combinations, so it asserts invariants across the whole grid

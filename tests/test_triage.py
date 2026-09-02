@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from triage.llm import BatchError, LlmSettings, TriageClient
+from triage.llm import LlmSettings, RefusalError, TriageClient
 from triage.models import (
     ScoreBlock,
     Ticket,
@@ -140,6 +141,28 @@ def _wire(
 ) -> tuple[TriageClient, Any]:
     stub = stub_factory(answers)
     return TriageClient(stub, settings(**overrides)), stub
+
+
+class _FailsOneFinding:
+    """A stub that fails every pass for one finding and answers for the rest.
+
+    ``keyed_client`` answers by cache key, which is right when every finding
+    gets the same answer and useless for a batch where one fails and another
+    does not. The finding is picked out by its description, since that is what
+    every pass's payload carries.
+    """
+
+    def __init__(self, inner: Any, description: str, error: Exception) -> None:
+        self._inner = inner
+        self._description = description
+        self._error = error
+        self.responses = SimpleNamespace(parse=self._parse)
+
+    async def _parse(self, **kwargs: Any) -> Any:
+        payload = json.loads(kwargs["input"][0]["content"])
+        if payload.get("finding_description") == self._description:
+            raise self._error
+        return await self._inner.responses.parse(**kwargs)
 
 
 def _sent(stub: Any, key: str, index: int = 0) -> dict[str, Any]:
@@ -458,10 +481,10 @@ async def test_an_empty_batch_is_an_empty_document(
     assert document.tickets_generated == 0
 
 
-async def test_a_failing_pass_names_every_finding_it_failed_on(
+async def test_a_failing_pass_records_every_finding_it_failed_on(
     settings: Settings, keyed_client: Client, response: Response, enriched: Enriched
 ) -> None:
-    """One broken run is diagnosed in a single pass, the way a malformed CSV is."""
+    """A broken run is still a document, and it says which findings have no ticket."""
     client, _ = _wire(
         keyed_client,
         settings,
@@ -469,11 +492,40 @@ async def test_a_failing_pass_names_every_finding_it_failed_on(
     )
     items = enriched(findings=[{"finding_id": "F-9001"}, {"finding_id": "F-9002"}])
 
-    with pytest.raises(BatchError) as caught:
-        await triage_batch(client, items)
+    document = await triage_batch(client, items)
 
-    assert caught.value.total == 2
-    assert sorted(failure.key for failure in caught.value.failures) == ["F-9001", "F-9002"]
+    assert document.tickets == []
+    assert document.findings_failed == 2
+    assert sorted(f.finding_id for f in document.failures) == ["F-9001", "F-9002"]
+    assert {f.error for f in document.failures} == {"RefusalError"}
+
+
+async def test_a_batch_keeps_the_tickets_it_did_produce(
+    settings: Settings, keyed_client: Client, response: Response, enriched: Enriched
+) -> None:
+    """A finding that fails does not take its siblings' tickets with it.
+
+    Their calls have already been made by the time it fails; throwing them away
+    would cost the run and tell a reader less than keeping them does.
+    """
+    stub = _FailsOneFinding(
+        keyed_client(_answers(response)),
+        "Doomed.",
+        RefusalError("Synthetic refusal."),
+    )
+    client = TriageClient(stub, settings())
+    items = enriched(
+        findings=[
+            {"finding_id": "F-9001", "finding_description": "Fine."},
+            {"finding_id": "F-9002", "finding_description": "Doomed."},
+        ]
+    )
+
+    document = await triage_batch(client, items)
+
+    assert [ticket.finding_id for ticket in document.tickets] == ["F-9001"]
+    assert [failure.finding_id for failure in document.failures] == ["F-9002"]
+    assert (document.tickets_generated, document.findings_failed) == (1, 1)
 
 
 async def test_the_configured_ceiling_is_what_bounds_the_batch(

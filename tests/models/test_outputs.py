@@ -16,6 +16,7 @@ from triage.models import (
     ScoreBlock,
     Ticket,
     TicketDocument,
+    TicketFailure,
     TicketTextBlock,
     UrgencyBlock,
     UrgencyOverride,
@@ -121,6 +122,49 @@ def test_document_rejects_duplicate_ids(ticket: Callable[..., Ticket]) -> None:
         TicketDocument(tickets=[ticket(), ticket()])
 
 
+def test_document_counts_failures_when_not_given(
+    ticket: Callable[..., Ticket], failure: Callable[..., TicketFailure]
+) -> None:
+    document = TicketDocument(tickets=[ticket()], failures=[failure()])
+    assert (document.tickets_generated, document.findings_failed) == (1, 1)
+
+
+def test_document_rejects_wrong_failure_count(
+    failure: Callable[..., TicketFailure],
+) -> None:
+    with pytest.raises(ValidationError):
+        TicketDocument(findings_failed=2, tickets=[], failures=[failure()])
+
+
+def test_document_rejects_duplicate_failures(
+    failure: Callable[..., TicketFailure],
+) -> None:
+    with pytest.raises(ValidationError):
+        TicketDocument(tickets=[], failures=[failure(), failure()])
+
+
+def test_a_finding_cannot_both_succeed_and_fail(
+    ticket: Callable[..., Ticket], failure: Callable[..., TicketFailure]
+) -> None:
+    """It produced a ticket or it produced a reason there is none, never both."""
+    with pytest.raises(ValidationError):
+        TicketDocument(
+            tickets=[ticket(finding_id="F-9001")],
+            failures=[failure(finding_id="F-9001")],
+        )
+
+
+def test_a_document_may_be_all_failures(failure: Callable[..., TicketFailure]) -> None:
+    """A run where nothing came through still accounts for what it was given."""
+    document = TicketDocument(tickets=[], failures=[failure()])
+    assert (document.tickets_generated, document.findings_failed) == (0, 1)
+
+
+def test_failure_detail_may_not_be_blank(failure: Callable[..., TicketFailure]) -> None:
+    with pytest.raises(ValidationError):
+        failure(detail="   ")
+
+
 def test_document_requires_aware_timestamp(ticket: Callable[..., Ticket]) -> None:
     with pytest.raises(ValidationError):
         TicketDocument(generated_at=datetime(2026, 1, 1), tickets=[ticket()])
@@ -131,7 +175,13 @@ def test_document_serialises_to_the_required_shape(ticket: Callable[..., Ticket]
         generated_at=datetime(2026, 1, 1, tzinfo=UTC), tickets=[ticket()]
     )
     payload = json.loads(document.model_dump_json())
-    assert list(payload) == ["generated_at", "tickets_generated", "tickets"]
+    assert list(payload) == [
+        "generated_at",
+        "tickets_generated",
+        "findings_failed",
+        "tickets",
+        "failures",
+    ]
     assert payload["generated_at"].startswith("2026-01-01T00:00:00")
     assert list(payload["tickets"][0]) == [
         "ticket_id",

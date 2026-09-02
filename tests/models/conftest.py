@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 import pytest
 
-from triage.models import ScoreBlock, Ticket
+from triage.models import ScoreBlock, Ticket, TicketFailure
 
 
 @pytest.fixture
@@ -41,5 +41,20 @@ def ticket(score: Callable[..., ScoreBlock]) -> Callable[..., Ticket]:
             "review_reason": None,
         }
         return Ticket(**(fields | overrides))
+
+    return _make
+
+
+@pytest.fixture
+def failure() -> Callable[..., TicketFailure]:
+    """A valid :class:`TicketFailure`."""
+
+    def _make(**overrides: object) -> TicketFailure:
+        fields: dict[str, object] = {
+            "finding_id": "F-9002",
+            "error": "OutputValidationError",
+            "detail": "Synthetic failure detail.",
+        }
+        return TicketFailure(**(fields | overrides))
 
     return _make
